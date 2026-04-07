@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "callva-plugins",
+  "name": "claude-plugins",
   "description": "CallVA voice AI platform plugins for Claude Code",
   "owner": {
     "name": "CallVA"

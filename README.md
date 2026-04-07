@@ -12,10 +12,10 @@ Claude Code plugins for the [CallVA](https://callva.one) voice AI platform. Mana
 
 ```bash
 # Add the marketplace
-claude plugin marketplace add callva-io/callva-plugins
+claude plugin marketplace add callva-io/claude-plugins
 
 # Install the plugin (available in all projects)
-claude plugin install callva@callva-plugins --scope user
+claude plugin install callva@claude-plugins --scope user
 ```
 
 ## Setup

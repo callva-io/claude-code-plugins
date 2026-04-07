@@ -1,11 +1,11 @@
 # CallVA Claude Code Plugins
 
-Claude Code plugins for the [CallVA](https://callva.one) voice AI platform. Manage agents, prompts, calls, transcripts, custom fields, schedules, and more via the CallVA External API.
+Claude Code plugins for the [CallVA](https://callva.io) voice AI platform. Manage agents, prompts, calls, transcripts, custom fields, schedules, and more via the CallVA External API.
 
 ## Prerequisites
 
 - Python 3.8+
-- A [CallVA](https://callva.one) account with API access
+- A [CallVA](https://callva.io) account with API access
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
 ## Install

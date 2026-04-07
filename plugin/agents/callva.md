@@ -98,11 +98,19 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" call +15551234567 --agent-
 ### Call Analytics
 
 ```bash
+# Basic aggregate (all time)
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" stats aggregate --op count [-f status=complete]
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" stats aggregate --op avg --field duration --group-by result
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" stats aggregate --op count --group-by status --interval day
+
+# Aggregate with date filtering (use -f with created_at_gte / created_at_lte)
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" stats aggregate --op count --group-by status -f created_at_gte=2026-04-07 -f created_at_lte=2026-04-08
+
+# Daily trends (--from/--to are ONLY available on trends, NOT on aggregate)
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" stats trends --from 2026-03-01 --to 2026-04-01
 ```
+
+**Note:** `stats aggregate` does NOT support `--from`/`--to` flags. To filter by date, use `-f created_at_gte=<date> -f created_at_lte=<date>`. The `-f` flag passes arbitrary key=value filters to the API.
 
 ### Recordings
 

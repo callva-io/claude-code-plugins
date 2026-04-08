@@ -10,22 +10,34 @@ Claude Code plugins for the [CallVA](https://callva.io) voice AI platform. Manag
 
 ## Install
 
-```bash
-# Add the marketplace
-claude plugin marketplace add callva-io/callva-plugins
+Add the marketplace:
 
-# Install the plugin (available in all projects)
+```bash
+claude plugin marketplace add callva-io/claude-code-plugins
+```
+
+Install the plugin (available in all projects):
+
+```bash
 claude plugin install callva@callva-plugins --scope user
 ```
 
 ## Update
 
-```bash
-# Refresh the marketplace cache
-claude plugin marketplace update callva-plugins
+Refresh the marketplace cache, then update the plugin:
 
-# Update the plugin
+```bash
+claude plugin marketplace update callva-plugins
+```
+
+```bash
 claude plugin update callva@callva-plugins
+```
+
+Or combined in one line:
+
+```bash
+claude plugin marketplace update callva-plugins && claude plugin update callva@callva-plugins
 ```
 
 ## Setup
@@ -68,7 +80,8 @@ The plugin activates automatically when Claude detects a CallVA-related request.
 
 ## Components
 
-- **Skill** (`plugin/skills/callva/SKILL.md`) - High-level helper that activates automatically. Delegates API calls to subagents to keep conversation context clean.
+- **CallVA Skill** (`plugin/skills/callva/SKILL.md`) - High-level helper that activates automatically. Delegates API calls to subagents to keep conversation context clean.
+- **Prompt Skill** (`plugin/skills/prompt/SKILL.md`) - Dedicated prompt engineering workflow with sync, edit, diff, push, versioning, and agent linkage.
 - **Agent** (`plugin/agents/callva.md`) - Programmatic interface for isolated API operations.
 - **Script** (`plugin/scripts/callva_api.py`) - Stateless Python CLI (stdlib only, no dependencies). All API interactions go through this script.
 

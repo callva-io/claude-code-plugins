@@ -16,12 +16,14 @@ Usage:
     callva_api.py fields        list | create | update <id> | delete <id> | impact <id>
     callva_api.py field-groups  list | create | update <id> | delete <id> | reorder | add-field <id> | remove-field <id> <fid> | reorder-fields <id> | update-field <id> <fid>
     callva_api.py schedules     list | get <id> | create | update <id> | delete <id> | preview <id> | executions <id>
-    callva_api.py settings      get
+    callva_api.py settings      list | get <key>
     callva_api.py projects      list | get <id>
     callva_api.py phone-numbers list | get <id>
     callva_api.py providers     list | types
 
-Global flag --json on any command outputs raw JSON instead of formatted text.
+Global flags:
+  --json    Output JSON instead of formatted text (slim by default on list endpoints)
+  --full    With --json, return full unfiltered API response (skip slim filtering)
 
 API key resolution (first match wins):
   1. CALLVA_API_KEY environment variable
@@ -48,8 +50,9 @@ from datetime import datetime
 BASE_URL = os.environ.get("CALLVA_API_URL", "https://api.callva.one/api/v1")
 PROJECT_ROOT = os.getcwd()
 
-# Global flag: set by --json on any command
+# Global flags: set by --json / --full on any command
 RAW_JSON = False
+FULL_JSON = False
 
 # ---------------------------------------------------------------------------
 # Environment & Auth
@@ -205,10 +208,10 @@ def out_json(data):
     out(json.dumps(data, indent=2, ensure_ascii=False))
 
 
-def out_result(result, formatter):
-    """If --json, dump raw API response. Otherwise, run the formatter."""
+def out_result(result, formatter, slim=None):
+    """If --json, dump API response (slim-filtered unless --full). Otherwise, format."""
     if RAW_JSON:
-        out_json(result)
+        out_json(slim(result) if slim and not FULL_JSON else result)
     else:
         formatter(result)
 
@@ -229,6 +232,38 @@ def fmt_dt(iso_str):
         return dt.strftime("%Y-%m-%d %H:%M")
     except (ValueError, AttributeError):
         return iso_str
+
+
+# ---------------------------------------------------------------------------
+# Slim JSON helpers — lightweight list responses for --json without --full
+# ---------------------------------------------------------------------------
+
+
+def _pick(obj, keys):
+    """Extract only the specified keys from a dict."""
+    return {k: obj[k] for k in keys if k in obj}
+
+
+def _slim_options(options):
+    """Collapse options to just values: [{"value":"a","label":"A"}] -> ["a"]."""
+    if not options or not isinstance(options, list):
+        return options
+    return [o.get("value", o) for o in options if isinstance(o, dict)]
+
+
+def _apply_slim(result, item_fn):
+    """Apply a per-item slim function to the data array of a list response.
+
+    Preserves pagination, meta, success, and message keys.
+    """
+    if FULL_JSON:
+        return result
+    data = result.get("data")
+    if isinstance(data, list):
+        filtered = dict(result)
+        filtered["data"] = [item_fn(item) for item in data]
+        return filtered
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +331,11 @@ def agents_list(args):
                 f"| {'Yes' if a.get('is_default') else 'No'} |"
             )
 
-    out_result(result, fmt)
+    def slim(r):
+        return _apply_slim(r, lambda a: _pick(a, [
+            "id", "name", "project_name", "is_active", "is_default"]))
+
+    out_result(result, fmt, slim=slim)
 
 
 def agents_default(_args):
@@ -419,7 +458,11 @@ def assets_list(args):
                 f"| {'Yes' if a.get('is_active') else 'No'} |"
             )
 
-    out_result(result, fmt)
+    def slim(r):
+        return _apply_slim(r, lambda a: _pick(a, [
+            "id", "name", "type", "is_active", "created_at", "updated_at"]))
+
+    out_result(result, fmt, slim=slim)
 
 
 def assets_get(args):
@@ -535,7 +578,20 @@ def calls_list(args):
         last = pagination.get("last_page", 1)
         out(f"\nPage {cur}/{last} ({total} total)")
 
-    out_result(result, fmt)
+    def slim(r):
+        def slim_call(c):
+            core = ["id", "name", "phone", "status", "result", "direction",
+                    "duration", "created_at", "company_name", "invoice_amount"]
+            s = _pick(c, core)
+            for k, v in c.items():
+                if k not in s and v is not None and k not in (
+                    "tenant_id", "project_id", "updated_at"
+                ):
+                    s[k] = v
+            return s
+        return _apply_slim(r, slim_call)
+
+    out_result(result, fmt, slim=slim)
 
 
 def calls_get(args):
@@ -792,7 +848,17 @@ def fields_list(args):
                 f"| {'Yes' if f_.get('is_filterable') else 'No'} |"
             )
 
-    out_result(result, fmt)
+    def slim(r):
+        def slim_field(f):
+            s = _pick(f, ["id", "field_key", "field_label", "field_type",
+                          "is_required", "is_system"])
+            opts = f.get("options")
+            if opts:
+                s["options"] = _slim_options(opts)
+            return s
+        return _apply_slim(r, slim_field)
+
+    out_result(result, fmt, slim=slim)
 
 
 def fields_create(args):
@@ -872,7 +938,23 @@ def field_groups_list(_args):
                 out("   (no fields)")
             out("")
 
-    out_result(result, fmt)
+    def slim(r):
+        def slim_group(g):
+            s = _pick(g, ["id", "name", "entity_type", "sort_order", "show_title"])
+            fields = g.get("custom_fields") or g.get("fields") or []
+            s["fields"] = [
+                {
+                    "field_key": f.get("field_key"),
+                    "field_label": f.get("field_label"),
+                    "field_type": f.get("field_type"),
+                    "position": f.get("pivot", {}).get("position"),
+                }
+                for f in fields
+            ]
+            return s
+        return _apply_slim(r, slim_group)
+
+    out_result(result, fmt, slim=slim)
 
 
 def field_groups_create(args):
@@ -977,7 +1059,19 @@ def schedules_list(_args):
                 f"| {len(rules)} |"
             )
 
-    out_result(result, fmt)
+    def slim(r):
+        def slim_schedule(s):
+            slimmed = _pick(s, ["id", "name", "webhook_url", "webhook_method", "is_active"])
+            rules = s.get("rules") or []
+            slimmed["rules"] = [
+                _pick(rl, ["name", "action", "days_of_week", "time_from", "time_to",
+                           "execution_interval", "is_active", "is_exclusive"])
+                for rl in rules
+            ]
+            return slimmed
+        return _apply_slim(r, slim_schedule)
+
+    out_result(result, fmt, slim=slim)
 
 
 def schedules_get(args):
@@ -1080,10 +1174,70 @@ def schedules_executions(args):
 # ===================================================================
 
 
-def settings_get(_args):
-    """Get project-level settings."""
+def settings_list(_args):
+    """List project-level settings."""
     result = api("GET", "/external/settings/project")
-    out_result(result, lambda r: out_json(r.get("data", r)))
+
+    def fmt(r):
+        data = r.get("data", {})
+        settings = data.get("settings", []) if isinstance(data, dict) else []
+        if not settings:
+            out("No settings found.")
+            return
+        out("| Key | Label | Category | Value | Inherited From |")
+        out("|-----|-------|----------|-------|----------------|")
+        for s in settings:
+            out(
+                f"| {s.get('key', '-')} "
+                f"| {s.get('label', '-')} "
+                f"| {s.get('category', '-')} "
+                f"| {s.get('effective_value', '-')} "
+                f"| {s.get('inherited_from') or 'project'} |"
+            )
+
+    def slim(r):
+        if FULL_JSON:
+            return r
+        data = r.get("data", {})
+        settings = data.get("settings", []) if isinstance(data, dict) else []
+        filtered = dict(r)
+        filtered_data = dict(data)
+        filtered_data["settings"] = [
+            _pick(s, ["key", "label", "category", "effective_value", "inherited_from"])
+            for s in settings
+        ]
+        filtered_data.pop("sections", None)
+        filtered["data"] = filtered_data
+        return filtered
+
+    out_result(result, fmt, slim=slim)
+
+
+def settings_get(args):
+    """Get a single setting by key (filtered from list)."""
+    result = api("GET", "/external/settings/project")
+    key = args.key
+    data = result.get("data", {})
+    settings = data.get("settings", []) if isinstance(data, dict) else []
+    match = next((s for s in settings if s.get("key") == key), None)
+    if not match:
+        die(f"Setting not found: {key}")
+
+    def fmt(_):
+        out(f"Key:       {match.get('key')}")
+        out(f"Label:     {match.get('label')}")
+        out(f"Category:  {match.get('category')}")
+        out(f"Value:     {match.get('effective_value')}")
+        out(f"Default:   {match.get('default_value')}")
+        out(f"Inherited: {match.get('inherited_from') or 'project'}")
+        out(f"Type:      {match.get('value_type')}")
+        opts = match.get("options")
+        if opts and isinstance(opts, dict):
+            choices = opts.get("choices", [])
+            if choices:
+                out(f"Choices:   {len(choices)} options")
+
+    out_result({"success": True, "data": match}, fmt)
 
 
 # ===================================================================
@@ -1217,6 +1371,8 @@ def build_parser():
     )
     parser.add_argument("--json", dest="raw_json", action="store_true",
                         help="Output raw JSON instead of formatted text")
+    parser.add_argument("--full", dest="full_json", action="store_true",
+                        help="With --json, return full API response (skip slim filtering)")
 
     subs = parser.add_subparsers(dest="resource", required=True)
 
@@ -1446,7 +1602,13 @@ def build_parser():
     sch_exec.add_argument("--per-page", type=int, help="Results per page")
 
     # --- settings ---
-    subs.add_parser("settings", help="Get project-level settings")
+    stg = subs.add_parser("settings", help="Project-level settings")
+    stg_sub = stg.add_subparsers(dest="action", required=True)
+
+    stg_sub.add_parser("list", help="List all settings")
+
+    stg_get = stg_sub.add_parser("get", help="Get a single setting by key")
+    stg_get.add_argument("key", help="Setting key (e.g. timezone, date_format)")
 
     # --- projects ---
     proj = subs.add_parser("projects", help="List and inspect projects")
@@ -1552,7 +1714,10 @@ DISPATCH = {
         "preview": schedules_preview,
         "executions": schedules_executions,
     },
-    "settings": settings_get,
+    "settings": {
+        "list": settings_list,
+        "get": settings_get,
+    },
     "projects": {
         "list": projects_list,
         "get": projects_get,
@@ -1569,12 +1734,13 @@ DISPATCH = {
 
 
 def main():
-    global RAW_JSON
+    global RAW_JSON, FULL_JSON
 
     parser = build_parser()
     args = parser.parse_args()
 
     RAW_JSON = getattr(args, "raw_json", False)
+    FULL_JSON = getattr(args, "full_json", False)
 
     resource = args.resource
     handler = DISPATCH.get(resource)

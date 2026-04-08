@@ -43,6 +43,8 @@ Add `--json` before the resource to get raw JSON output (useful for piping/parsi
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" --json agents default
 ```
 
+**Slim JSON**: List endpoints with `--json` return lightweight responses by default (no embedded content, collapsed nested objects). Use `--full` alongside `--json` to get the full unfiltered API response. Individual `get` commands always return full payloads.
+
 ### API Key
 
 The script auto-loads `CALLVA_API_KEY` from (in order): environment variable, `~/.claude/.env`, project `.env.local`, project `.env`.
@@ -175,7 +177,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" schedules executions <id> 
 ### Projects, Settings, Phone Numbers, Providers
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" settings
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" settings list
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" settings get <key>
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" projects list [--is-active true]
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" projects get <id>
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py" phone-numbers list

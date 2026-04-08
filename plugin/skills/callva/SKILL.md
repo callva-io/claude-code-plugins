@@ -45,6 +45,8 @@ Run the following command and return its stdout exactly as-is:
 
 Add `--json` before the resource name for raw JSON output on any command.
 
+**Slim JSON**: List endpoints with `--json` return lightweight responses by default (no embedded content, collapsed nested objects). Use `--full` alongside `--json` to get the full unfiltered API response. Individual `get` commands always return full payloads.
+
 ### Agents
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py agents list [--is-active true]
@@ -138,7 +140,8 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py schedules executions <id>
 
 ### Projects, Settings, Phone Numbers, Providers
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py settings
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py settings list
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py settings get <key>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py projects list [--is-active true]
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py projects get <id>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py phone-numbers list

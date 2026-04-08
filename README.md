@@ -1,6 +1,6 @@
 # CallVA Claude Code Plugins
 
-Claude Code plugins for the [CallVA](https://callva.io) voice AI platform. Manage agents, prompts, calls, transcripts, custom fields, schedules, and more via the CallVA External API.
+Claude Code plugins for the [CallVA](https://callva.io) voice AI platform. Manage agents, prompts, calls, transcripts, automations, variables, custom fields, schedules, and more via the CallVA External API.
 
 ## Prerequisites
 
@@ -60,6 +60,8 @@ Update the default agent's prompt to include appointment confirmation
 Get the transcript for call <id>
 Show call trends for March
 What are my current webhook schedules?
+List my automations and their last run status
+Deploy this script to my call runner automation
 Create a custom field for call priority
 ```
 
@@ -76,12 +78,15 @@ The plugin activates automatically when Claude detects a CallVA-related request.
 - **Recordings** - stream and download call recordings
 - **Custom fields & groups** - define, organize, and manage custom data fields
 - **Webhook schedules** - time-based webhook rules with preview and execution history
+- **Automations** - Windmill scripts: create, deploy code, trigger runs, view run results and logs, runtime info
+- **Variables** - project-scoped secrets and config for automations (create, update, delete)
 - **Projects, Settings, Phone numbers, Providers** - platform configuration
 
 ## Components
 
 - **CallVA Skill** (`plugin/skills/callva/SKILL.md`) - High-level helper that activates automatically. Delegates API calls to subagents to keep conversation context clean.
 - **Prompt Skill** (`plugin/skills/prompt/SKILL.md`) - Dedicated prompt engineering workflow with sync, edit, diff, push, versioning, and agent linkage.
+- **Automation Skill** (`plugin/skills/automation/SKILL.md`) - Create, deploy, and manage Windmill automation scripts with best-practice guidance.
 - **Agent** (`plugin/agents/callva.md`) - Programmatic interface for isolated API operations.
 - **Script** (`plugin/scripts/callva_api.py`) - Stateless Python CLI (stdlib only, no dependencies). All API interactions go through this script.
 

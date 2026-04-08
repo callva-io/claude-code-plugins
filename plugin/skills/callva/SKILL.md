@@ -2,7 +2,7 @@
 name: callva
 description: CallVA helper — manage voice agents, prompts, calls, transcripts, custom fields, schedules, recordings, and more via the CallVA External API. Use when asked to configure, inspect, or modify CallVA resources.
 allowed-tools: Bash, Read, Write, Agent
-argument-hint: [agents | assets | calls | transcripts | stats | fields | schedules | settings | help]
+argument-hint: [agents | assets | calls | transcripts | stats | fields | schedules | automations | variables | settings | help]
 ---
 
 # CallVA: $ARGUMENTS
@@ -148,6 +148,22 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py phone-numbers list
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py phone-numbers get <id>
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py providers types
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py providers list [--provider-type sip]
+```
+
+### Automations & Variables
+
+For creating, deploying, and managing automations (Windmill scripts), use the dedicated **automation** skill which provides detailed guidance on script authoring, best practices, and the full automation lifecycle.
+
+The automation endpoints are available via the External API:
+```
+GET/POST       /api/v1/external/automations
+GET/PUT/DELETE /api/v1/external/automations/{id}
+GET/PUT        /api/v1/external/automations/{id}/code
+POST           /api/v1/external/automations/{id}/run
+GET            /api/v1/external/automations/{id}/runs
+GET            /api/v1/external/automations/{id}/runs/{jobId}
+GET/POST       /api/v1/external/variables
+PATCH/DELETE   /api/v1/external/variables/{path}
 ```
 
 ## Workflow by Operation

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """CallVA External API client.
 
-Stateless CLI for managing voice agents, assets (prompts), calls, and transcripts
-on the CallVA voice AI platform. Pure CRUD — no local persistence, no side effects.
+Stateless CLI for managing voice agents, assets (prompts), calls, transcripts,
+automations, and variables on the CallVA voice AI platform.
+Pure CRUD — no local persistence, no side effects.
 All output goes to stdout. Pipe or redirect as needed.
 
 Usage:
@@ -14,8 +15,10 @@ Usage:
     callva_api.py stats         aggregate | trends
     callva_api.py recordings    stream <call_id> --url <url> [--output <file>]
     callva_api.py fields        list | create | update <id> | delete <id> | impact <id>
-    callva_api.py field-groups  list | create | update <id> | delete <id> | reorder | add-field <id> | remove-field <id> <fid> | reorder-fields <id> | update-field <id> <fid>
-    callva_api.py schedules     list | get <id> | create | update <id> | delete <id> | preview <id> | executions <id>
+    callva_api.py field-groups  list | create | update <id> | delete <id> | reorder | ...
+    callva_api.py schedules     list | get <id> | create | update <id> | delete <id> | preview | executions
+    callva_api.py automations   list | get <id> | create | update <id> | delete <id> | code <id> | deploy <id> | run <id> | runs <id> | run-detail <id> <job> | runtime-info
+    callva_api.py variables     list | create | update <path> | delete <path>
     callva_api.py settings      list | get <key>
     callva_api.py projects      list | get <id>
     callva_api.py phone-numbers list | get <id>
@@ -1170,6 +1173,312 @@ def schedules_executions(args):
 
 
 # ===================================================================
+# AUTOMATIONS
+# ===================================================================
+
+
+def automations_list(args):
+    """List automations."""
+    query = {}
+    if getattr(args, "per_page", None):
+        query["per_page"] = str(args.per_page)
+
+    result = api("GET", "/external/automations", query=query)
+
+    def fmt(r):
+        items = r.get("data", [])
+        if not items:
+            out("No automations found.")
+            return
+        out("| ID | Name | Active | Path |")
+        out("|----|------|--------|------|")
+        for a in items:
+            out(
+                f"| `{a.get('id', '-')}` "
+                f"| {a.get('name', '-')} "
+                f"| {'Yes' if a.get('is_active') else 'No'} "
+                f"| {a.get('windmill_path', '-')} |"
+            )
+
+    def slim(r):
+        return _apply_slim(r, lambda a: _pick(a, [
+            "id", "name", "description", "is_active", "windmill_path",
+            "windmill_script_hash", "created_at", "updated_at"]))
+
+    out_result(result, fmt, slim=slim)
+
+
+def automations_get(args):
+    """Get automation details."""
+    result = api("GET", f"/external/automations/{args.id}")
+
+    def fmt(r):
+        a = r.get("data", r)
+        out(f"ID:          {a.get('id', '-')}")
+        out(f"Name:        {a.get('name', '-')}")
+        out(f"Description: {a.get('description') or '-'}")
+        out(f"Active:      {a.get('is_active', '-')}")
+        out(f"Path:        {a.get('windmill_path', '-')}")
+        out(f"Hash:        {a.get('windmill_script_hash', '-')}")
+        out(f"Created:     {fmt_dt(a.get('created_at'))}")
+        out(f"Updated:     {fmt_dt(a.get('updated_at'))}")
+        settings = a.get("settings")
+        if settings:
+            out(f"\n--- Settings ---")
+            out(json.dumps(settings, indent=2))
+
+    out_result(result, fmt)
+
+
+def automations_create(args):
+    """Create an automation."""
+    data = {"name": args.name}
+    if args.description:
+        data["description"] = args.description
+
+    result = api("POST", "/external/automations", data)
+
+    def fmt(r):
+        a = r.get("data", r)
+        out(f"Created: {a.get('id', '-')}")
+        out(f"Name:    {a.get('name', '-')}")
+        out(f"Path:    {a.get('windmill_path', '-')}")
+
+    out_result(result, fmt)
+
+
+def automations_update(args):
+    """Update automation metadata."""
+    data = {}
+    if args.json_data:
+        data = args.json_data
+    else:
+        if args.name is not None:
+            data["name"] = args.name
+        if args.description is not None:
+            data["description"] = args.description
+        if args.is_active is not None:
+            data["is_active"] = args.is_active
+        if getattr(args, "settings_json", None) is not None:
+            data["settings"] = args.settings_json
+
+    if not data:
+        die("No fields to update. Use --name, --description, --is-active, --settings, or --json")
+
+    result = api("PUT", f"/external/automations/{args.id}", data)
+
+    def fmt(r):
+        a = r.get("data", r)
+        out(f"Updated: {args.id}")
+        out(f"Name:    {a.get('name', '-')}")
+
+    out_result(result, fmt)
+
+
+def automations_delete(args):
+    """Delete an automation."""
+    result = api("DELETE", f"/external/automations/{args.id}")
+    out_result(result, lambda _: out(f"Deleted automation: {args.id}"))
+
+
+def automations_code(args):
+    """Get deployed script code."""
+    result = api("GET", f"/external/automations/{args.id}/code")
+
+    def fmt(r):
+        d = r.get("data", r)
+        lang = d.get("language", "unknown")
+        code = d.get("code", "")
+        hash_ = d.get("hash", "-")
+        out(f"Language: {lang}")
+        out(f"Hash:     {hash_}")
+        out(f"\n--- Code ({len(code)} chars) ---")
+        out(code)
+
+    out_result(result, fmt)
+
+
+def automations_deploy(args):
+    """Deploy new script code to an automation."""
+    if args.code_file:
+        code = sys.stdin.read() if args.code_file == "-" else open(args.code_file).read()
+    elif args.code:
+        code = args.code
+    else:
+        die("Provide code via --file or --code")
+
+    data = {"code": code, "language": args.language}
+    result = api("PUT", f"/external/automations/{args.id}/code", data)
+
+    def fmt(r):
+        d = r.get("data", r)
+        out(f"Deployed to: {args.id}")
+        out(f"Hash:        {d.get('hash', '-')}")
+
+    out_result(result, fmt)
+
+
+def automations_run(args):
+    """Trigger execution of an automation."""
+    result = api("POST", f"/external/automations/{args.id}/run")
+
+    def fmt(r):
+        d = r.get("data", r)
+        out(f"Triggered: {args.id}")
+        out(f"Job ID:    {d.get('job_id', '-')}")
+
+    out_result(result, fmt)
+
+
+def automations_runs(args):
+    """List completed runs for an automation."""
+    query = {}
+    if getattr(args, "per_page", None):
+        query["per_page"] = str(args.per_page)
+
+    result = api("GET", f"/external/automations/{args.id}/runs", query=query)
+
+    def _get_runs(r):
+        data = r.get("data", {})
+        if isinstance(data, dict):
+            return data.get("runs", [])
+        return data if isinstance(data, list) else []
+
+    def fmt(r):
+        runs = _get_runs(r)
+        if not runs:
+            out("No runs found.")
+            return
+        out("| Job ID | Success | Duration | Type |")
+        out("|--------|---------|----------|------|")
+        for run in runs:
+            dur = run.get("duration_ms")
+            dur_str = f"{dur}ms" if dur is not None else "-"
+            out(
+                f"| `{run.get('id', '-')}` "
+                f"| {'Yes' if run.get('success') else 'No'} "
+                f"| {dur_str} "
+                f"| {run.get('job_kind', '-')} |"
+            )
+
+    def slim(r):
+        runs = _get_runs(r)
+        filtered = dict(r)
+        filtered["data"] = [
+            _pick(run, ["id", "success", "duration_ms", "job_kind", "created_at"])
+            for run in runs
+        ]
+        return filtered
+
+    out_result(result, fmt, slim=slim)
+
+
+def automations_run_detail(args):
+    """Get detail for a specific run."""
+    result = api("GET", f"/external/automations/{args.id}/runs/{args.job_id}")
+
+    def fmt(r):
+        d = r.get("data", r)
+        out(f"Job ID:   {d.get('id', args.job_id)}")
+        out(f"Success:  {d.get('success', '-')}")
+        dur = d.get("duration_ms")
+        out(f"Duration: {f'{dur}ms' if dur is not None else '-'}")
+        result_data = d.get("result")
+        if result_data is not None:
+            out(f"\n--- Result ---")
+            out(json.dumps(result_data, indent=2) if isinstance(result_data, (dict, list)) else str(result_data))
+        logs = d.get("logs")
+        if logs:
+            out(f"\n--- Logs ---")
+            out(logs)
+
+    out_result(result, fmt)
+
+
+def automations_runtime_info(_args):
+    """Get runtime environment info."""
+    result = api("GET", "/external/automations/runtime-info")
+
+    def fmt(r):
+        d = r.get("data", r)
+        out(f"Engine:    {d.get('engine', '-')}")
+        out(f"Version:   {d.get('version', '-')}")
+        out(f"Workspace: {d.get('workspace', '-')}")
+        out(f"Runtime:   {d.get('scripts_runtime', '-')}")
+        out(f"Timeout:   {d.get('max_timeout_seconds', '-')}s")
+
+    out_result(result, fmt)
+
+
+# ===================================================================
+# VARIABLES
+# ===================================================================
+
+
+def variables_list(_args):
+    """List project variables."""
+    result = api("GET", "/external/variables")
+
+    def fmt(r):
+        items = r.get("data", [])
+        if not items:
+            out("No variables found.")
+            return
+        out("| Name | Path | Secret |")
+        out("|------|------|--------|")
+        for v in items:
+            out(
+                f"| {v.get('name', '-')} "
+                f"| {v.get('path', '-')} "
+                f"| {'Yes' if v.get('is_secret') else 'No'} |"
+            )
+
+    def slim(r):
+        return _apply_slim(r, lambda v: _pick(v, [
+            "name", "path", "is_secret", "description"]))
+
+    out_result(result, fmt, slim=slim)
+
+
+def variables_create(args):
+    """Create a project variable."""
+    data = {"name": args.name, "value": args.value}
+    if args.description:
+        data["description"] = args.description
+    if args.is_secret is not None:
+        data["is_secret"] = args.is_secret
+
+    result = api("POST", "/external/variables", data)
+
+    def fmt(r):
+        v = r.get("data", r)
+        out(f"Created: {v.get('name', '-')}")
+        out(f"Path:    {v.get('path', '-')}")
+        out(f"Secret:  {v.get('is_secret', '-')}")
+
+    out_result(result, fmt)
+
+
+def variables_update(args):
+    """Update a variable value."""
+    data = {"value": args.value}
+    path = urllib.parse.quote(args.path, safe="")
+    result = api("PATCH", f"/external/variables/{path}", data)
+
+    def fmt(r):
+        out(f"Updated variable: {args.path}")
+
+    out_result(result, fmt)
+
+
+def variables_delete(args):
+    """Delete a variable."""
+    path = urllib.parse.quote(args.path, safe="")
+    result = api("DELETE", f"/external/variables/{path}")
+    out_result(result, lambda _: out(f"Deleted variable: {args.path}"))
+
+
+# ===================================================================
 # SETTINGS
 # ===================================================================
 
@@ -1601,6 +1910,72 @@ def build_parser():
     sch_exec.add_argument("id", help="Schedule UUID")
     sch_exec.add_argument("--per-page", type=int, help="Results per page")
 
+    # --- automations ---
+    aut = subs.add_parser("automations", help="Manage automations (Windmill scripts)")
+    aut_sub = aut.add_subparsers(dest="action", required=True)
+
+    aut_ls = aut_sub.add_parser("list", help="List automations")
+    aut_ls.add_argument("--per-page", type=int, help="Results per page")
+
+    aut_get = aut_sub.add_parser("get", help="Get automation details")
+    aut_get.add_argument("id", help="Automation UUID")
+
+    aut_cr = aut_sub.add_parser("create", help="Create automation")
+    aut_cr.add_argument("--name", required=True, help="Automation name")
+    aut_cr.add_argument("--description", help="Description")
+
+    aut_upd = aut_sub.add_parser("update", help="Update automation metadata")
+    aut_upd.add_argument("id", help="Automation UUID")
+    aut_upd.add_argument("--name", help="New name")
+    aut_upd.add_argument("--description", help="New description")
+    aut_upd.add_argument("--is-active", type=parse_bool, default=None, help="Active status")
+    aut_upd.add_argument("--settings", dest="settings_json", type=parse_json_arg, help="Settings as JSON")
+    aut_upd.add_argument("--json", dest="json_data", type=parse_json_arg, help="Full update payload as JSON")
+
+    aut_del = aut_sub.add_parser("delete", help="Delete automation")
+    aut_del.add_argument("id", help="Automation UUID")
+
+    aut_code = aut_sub.add_parser("code", help="Get deployed script code")
+    aut_code.add_argument("id", help="Automation UUID")
+
+    aut_dep = aut_sub.add_parser("deploy", help="Deploy new script code")
+    aut_dep.add_argument("id", help="Automation UUID")
+    aut_dep.add_argument("--file", dest="code_file", help="Script file path (- for stdin)")
+    aut_dep.add_argument("--code", help="Inline script code")
+    aut_dep.add_argument("--language", default="deno", choices=["deno"], help="Script language (default: deno)")
+
+    aut_run = aut_sub.add_parser("run", help="Trigger execution")
+    aut_run.add_argument("id", help="Automation UUID")
+
+    aut_runs = aut_sub.add_parser("runs", help="List completed runs")
+    aut_runs.add_argument("id", help="Automation UUID")
+    aut_runs.add_argument("--per-page", type=int, help="Results per page")
+
+    aut_rd = aut_sub.add_parser("run-detail", help="Get run detail (result, logs)")
+    aut_rd.add_argument("id", help="Automation UUID")
+    aut_rd.add_argument("job_id", help="Job UUID")
+
+    aut_sub.add_parser("runtime-info", help="Get runtime environment info")
+
+    # --- variables ---
+    var = subs.add_parser("variables", help="Manage project variables (secrets)")
+    var_sub = var.add_subparsers(dest="action", required=True)
+
+    var_sub.add_parser("list", help="List project variables")
+
+    var_cr = var_sub.add_parser("create", help="Create variable")
+    var_cr.add_argument("--name", required=True, help="Variable name (UPPERCASE, e.g. MY_API_KEY)")
+    var_cr.add_argument("--value", required=True, help="Variable value")
+    var_cr.add_argument("--description", help="Description")
+    var_cr.add_argument("--is-secret", type=parse_bool, default=None, help="Mark as secret (encrypted at rest)")
+
+    var_upd = var_sub.add_parser("update", help="Update variable value")
+    var_upd.add_argument("path", help="Full variable path (e.g. f/proj_xxx/MY_VAR)")
+    var_upd.add_argument("--value", required=True, help="New value")
+
+    var_del = var_sub.add_parser("delete", help="Delete variable")
+    var_del.add_argument("path", help="Full variable path (e.g. f/proj_xxx/MY_VAR)")
+
     # --- settings ---
     stg = subs.add_parser("settings", help="Project-level settings")
     stg_sub = stg.add_subparsers(dest="action", required=True)
@@ -1704,6 +2079,25 @@ DISPATCH = {
         "remove-field": field_groups_remove_field,
         "reorder-fields": field_groups_reorder_fields,
         "update-field": field_groups_update_field,
+    },
+    "automations": {
+        "list": automations_list,
+        "get": automations_get,
+        "create": automations_create,
+        "update": automations_update,
+        "delete": automations_delete,
+        "code": automations_code,
+        "deploy": automations_deploy,
+        "run": automations_run,
+        "runs": automations_runs,
+        "run-detail": automations_run_detail,
+        "runtime-info": automations_runtime_info,
+    },
+    "variables": {
+        "list": variables_list,
+        "create": variables_create,
+        "update": variables_update,
+        "delete": variables_delete,
     },
     "schedules": {
         "list": schedules_list,

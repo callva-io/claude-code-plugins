@@ -1,7 +1,7 @@
 {
   "name": "callva",
-  "version": "1.2.0",
-  "description": "CallVA voice AI platform integration — manage agents, prompts, calls, and transcripts via the External API.",
+  "version": "1.3.0",
+  "description": "CallVA voice AI platform integration — manage agents, prompts, calls, transcripts, automations, and variables via the External API.",
   "author": {
     "name": "CallVA"
   },

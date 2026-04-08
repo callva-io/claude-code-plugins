@@ -21,6 +21,10 @@ claude plugin install callva@callva-plugins --scope user
 ## Update
 
 ```bash
+# Refresh the marketplace cache
+claude plugin marketplace update callva-plugins
+
+# Update the plugin
 claude plugin update callva@callva-plugins
 ```
 

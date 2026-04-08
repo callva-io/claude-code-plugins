@@ -18,6 +18,12 @@ claude plugin marketplace add callva-io/callva-plugins
 claude plugin install callva@callva-plugins --scope user
 ```
 
+## Update
+
+```bash
+claude plugin update callva@callva-plugins
+```
+
 ## Setup
 
 Set `CALLVA_API_KEY` in one of these locations (first match wins):

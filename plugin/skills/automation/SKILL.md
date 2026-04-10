@@ -37,6 +37,28 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py variables --help
 
 **When unsure about syntax, always run `--help` first. The CLI is the single source of truth.**
 
+### Output Format Flags (global, must come BEFORE the subcommand)
+
+- `--json` — emit the raw API response as JSON instead of the human-readable table/summary. Useful when a formatter crashes or when you need fields the default view omits.
+- `--full` — disable slim filtering so the JSON output contains every field returned by the server (default slims to the most useful fields).
+
+Both flags are top-level and must appear *before* the resource name:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py --json automations list
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py --json --full automations get <id>
+```
+
+### Request Payloads — `--data` / `--data-file`
+
+For create/update commands that take a JSON body, use `--data '<json>'` (inline) or `--data-file <path>` (from file). These are subcommand-level flags and go *after* the resource name:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py automations update <id> --data '{"name":"new name","is_active":true}'
+```
+
+Rule of thumb: `--json` = output format (before resource). `--data` = request payload (after resource).
+
 ### Windmill Documentation
 
 When writing scripts, consult the Windmill docs:

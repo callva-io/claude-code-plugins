@@ -10,7 +10,7 @@
       "name": "callva",
       "description": "Manage voice agents, prompts, calls, and transcripts via the CallVA External API.",
       "source": "./plugin",
-      "version": "1.2.0",
+      "version": "1.5.0",
       "author": {
         "name": "CallVA"
       },

@@ -356,8 +356,8 @@ def agents_get(args):
 def agents_update(args):
     """Update agent fields."""
     data = {}
-    if args.json_data:
-        data = args.json_data
+    if args.payload:
+        data = args.payload
     else:
         if args.name is not None:
             data["name"] = args.name
@@ -379,7 +379,7 @@ def agents_update(args):
             data["config"] = args.config_json
 
     if not data:
-        die("No fields to update. Use flags or --json '{...}'")
+        die("No fields to update. Use flags or --data '{...}'")
 
     result = api("PATCH", f"/external/agents/{args.id}", data)
 
@@ -606,7 +606,7 @@ def calls_get(args):
 
 def calls_create(args):
     """Create a call record from JSON."""
-    data = args.json_data or {}
+    data = args.payload or {}
     result = api("POST", "/external/calls", data)
 
     def fmt(r):
@@ -619,9 +619,9 @@ def calls_create(args):
 
 def calls_update(args):
     """Update a call record."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide fields as --json '{...}'")
+        die("Provide fields as --data '{...}'")
     result = api("PATCH", f"/external/calls/{args.id}", data)
 
     def fmt(r):
@@ -639,9 +639,9 @@ def calls_delete(args):
 
 def calls_batch(args):
     """Batch update calls."""
-    data = {"ids": args.ids, "updates": args.json_data or {}}
+    data = {"ids": args.ids, "updates": args.payload or {}}
     if not data["updates"]:
-        die("Provide updates as --json '{...}'")
+        die("Provide updates as --data '{...}'")
     result = api("PATCH", "/external/calls/batch", data)
 
     def fmt(r):
@@ -677,9 +677,9 @@ def transcripts_get(args):
 
 def transcripts_store(args):
     """Store/update a transcript."""
-    data = args.json_data
+    data = args.payload
     if not data:
-        die("Provide transcript as --json-file <path> or --json '{\"messages\":[...]}'")
+        die("Provide transcript as --data-file <path> or --data '{\"messages\":[...]}'")
     result = api("POST", f"/external/calls/{args.call_id}/transcript", data)
     out_result(result, lambda r: out(f"Stored transcript for call {args.call_id}"))
 
@@ -866,9 +866,9 @@ def fields_list(args):
 
 def fields_create(args):
     """Create a custom field definition."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide field definition as --json '{...}'")
+        die("Provide field definition as --data '{...}'")
     result = api("POST", "/external/custom-fields", data)
 
     def fmt(r):
@@ -883,9 +883,9 @@ def fields_create(args):
 
 def fields_update(args):
     """Update a custom field definition."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide fields to update as --json '{...}'")
+        die("Provide fields to update as --data '{...}'")
     result = api("PUT", f"/external/custom-fields/{args.id}", data)
 
     def fmt(r):
@@ -962,9 +962,9 @@ def field_groups_list(_args):
 
 def field_groups_create(args):
     """Create a custom field group."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide group definition as --json '{...}'")
+        die("Provide group definition as --data '{...}'")
     result = api("POST", "/external/custom-field-groups", data)
 
     def fmt(r):
@@ -977,9 +977,9 @@ def field_groups_create(args):
 
 def field_groups_update(args):
     """Update a custom field group."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide fields to update as --json '{...}'")
+        die("Provide fields to update as --data '{...}'")
     result = api("PUT", f"/external/custom-field-groups/{args.id}", data)
 
     def fmt(r):
@@ -998,9 +998,9 @@ def field_groups_delete(args):
 
 def field_groups_reorder(args):
     """Reorder custom field groups."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide order as --json '{\"groups\": [{\"id\": \"...\", \"sort_order\": 0}, ...]}'")
+        die("Provide order as --data '{\"groups\": [{\"id\": \"...\", \"sort_order\": 0}, ...]}'")
     result = api("POST", "/external/custom-field-groups/reorder", data)
     out_result(result, lambda _: out("Groups reordered."))
 
@@ -1020,18 +1020,18 @@ def field_groups_remove_field(args):
 
 def field_groups_reorder_fields(args):
     """Reorder fields within a group."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide order as --json '{\"fields\": [{\"id\": \"...\", \"sort_order\": 0}, ...]}'")
+        die("Provide order as --data '{\"fields\": [{\"id\": \"...\", \"sort_order\": 0}, ...]}'")
     result = api("POST", f"/external/custom-field-groups/{args.id}/fields/reorder", data)
     out_result(result, lambda _: out(f"Fields reordered in group {args.id}"))
 
 
 def field_groups_update_field(args):
     """Update field display settings within a group."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide display settings as --json '{\"display_mode\": \"...\", ...}'")
+        die("Provide display settings as --data '{\"display_mode\": \"...\", ...}'")
     result = api("PATCH", f"/external/custom-field-groups/{args.id}/fields/{args.field_id}", data)
     out_result(result, lambda _: out(f"Updated field {args.field_id} settings in group {args.id}"))
 
@@ -1105,9 +1105,9 @@ def schedules_get(args):
 
 def schedules_create(args):
     """Create a webhook schedule."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide schedule definition as --json '{...}'")
+        die("Provide schedule definition as --data '{...}'")
     result = api("POST", "/external/webhook-schedule", data)
 
     def fmt(r):
@@ -1120,9 +1120,9 @@ def schedules_create(args):
 
 def schedules_update(args):
     """Update a webhook schedule (syncs rules)."""
-    data = args.json_data or {}
+    data = args.payload or {}
     if not data:
-        die("Provide fields to update as --json '{...}'")
+        die("Provide fields to update as --data '{...}'")
     result = api("PUT", f"/external/webhook-schedule/{args.id}", data)
 
     def fmt(r):
@@ -1184,6 +1184,15 @@ def automations_list(args):
         query["per_page"] = str(args.per_page)
 
     result = api("GET", "/external/automations", query=query)
+
+    # /external/automations returns a double-wrapped response: {"data": {"data": [...]}}
+    # unlike every other list endpoint. Unwrap it so fmt + slim see the standard shape.
+    outer_data = result.get("data")
+    if isinstance(outer_data, dict) and isinstance(outer_data.get("data"), list):
+        result["data"] = outer_data["data"]
+        for k, v in outer_data.items():
+            if k != "data" and k not in result:
+                result[k] = v
 
     def fmt(r):
         items = r.get("data", [])
@@ -1250,8 +1259,8 @@ def automations_create(args):
 def automations_update(args):
     """Update automation metadata."""
     data = {}
-    if args.json_data:
-        data = args.json_data
+    if args.payload:
+        data = args.payload
     else:
         if args.name is not None:
             data["name"] = args.name
@@ -1263,7 +1272,7 @@ def automations_update(args):
             data["settings"] = args.settings_json
 
     if not data:
-        die("No fields to update. Use --name, --description, --is-active, --settings, or --json")
+        die("No fields to update. Use --name, --description, --is-active, --settings, or --data")
 
     result = api("PUT", f"/external/automations/{args.id}", data)
 
@@ -1578,7 +1587,11 @@ def projects_list(args):
                 f"| {'Yes' if p.get('is_active') else 'No'} |"
             )
 
-    out_result(result, fmt)
+    def slim(r):
+        return _apply_slim(r, lambda p: _pick(p, [
+            "id", "name", "description", "is_active", "is_default"]))
+
+    out_result(result, fmt, slim=slim)
 
 
 def projects_get(args):
@@ -1617,7 +1630,13 @@ def phone_numbers_list(args):
                 f"| {n.get('status', '-')} |"
             )
 
-    out_result(result, fmt)
+    def slim(r):
+        # Excludes sip_outbound_password and other provider/livekit internals.
+        return _apply_slim(r, lambda n: _pick(n, [
+            "id", "phone_number", "label", "number_type", "provider_type",
+            "status", "is_active", "assigned_project_id", "assigned_agent_id"]))
+
+    out_result(result, fmt, slim=slim)
 
 
 def phone_numbers_get(args):
@@ -1659,7 +1678,12 @@ def providers_list(args):
                 f"| {p.get('phone_numbers_count', '-')} |"
             )
 
-    out_result(result, fmt)
+    def slim(r):
+        return _apply_slim(r, lambda p: _pick(p, [
+            "id", "name", "provider_type", "is_active", "is_verified",
+            "phone_numbers_count"]))
+
+    out_result(result, fmt, slim=slim)
 
 
 def providers_types(_args):
@@ -1708,7 +1732,7 @@ def build_parser():
     ag_upd.add_argument("--greeting-instruction", help="Greeting instruction")
     ag_upd.add_argument("--agent-speaks-first", type=parse_bool, default=None)
     ag_upd.add_argument("--config", dest="config_json", type=parse_json_arg, help="Config JSON (partial merge)")
-    ag_upd.add_argument("--json", dest="json_data", type=parse_json_arg, help="Full update payload as JSON")
+    ag_upd.add_argument("--data", dest="payload", type=parse_json_arg, help="Full update payload as JSON")
 
     ag_del = ag_sub.add_parser("delete", help="Delete agent")
     ag_del.add_argument("id", help="Agent UUID")
@@ -1755,18 +1779,18 @@ def build_parser():
     cl_get.add_argument("id", help="Call UUID")
 
     cl_cr = cl_sub.add_parser("create", help="Create call record")
-    cl_cr.add_argument("--json", dest="json_data", type=parse_json_arg, help="Call fields as JSON")
+    cl_cr.add_argument("--data", dest="payload", type=parse_json_arg, help="Call fields as JSON")
 
     cl_upd = cl_sub.add_parser("update", help="Update call")
     cl_upd.add_argument("id", help="Call UUID")
-    cl_upd.add_argument("--json", dest="json_data", type=parse_json_arg, help="Fields to update as JSON")
+    cl_upd.add_argument("--data", dest="payload", type=parse_json_arg, help="Fields to update as JSON")
 
     cl_del = cl_sub.add_parser("delete", help="Delete call")
     cl_del.add_argument("id", help="Call UUID")
 
     cl_batch = cl_sub.add_parser("batch", help="Batch update calls")
     cl_batch.add_argument("ids", nargs="+", help="Call UUIDs")
-    cl_batch.add_argument("--json", dest="json_data", type=parse_json_arg, help="Update fields as JSON")
+    cl_batch.add_argument("--data", dest="payload", type=parse_json_arg, help="Update fields as JSON")
 
     # --- transcripts ---
     tr = subs.add_parser("transcripts", help="Manage call transcripts")
@@ -1777,8 +1801,8 @@ def build_parser():
 
     tr_store = tr_sub.add_parser("store", help="Store/update transcript")
     tr_store.add_argument("call_id", help="Call UUID")
-    tr_store.add_argument("--json", dest="json_data", type=parse_json_arg, help="Transcript JSON")
-    tr_store.add_argument("--json-file", dest="json_data", type=parse_json_file, help="Read from JSON file")
+    tr_store.add_argument("--data", dest="payload", type=parse_json_arg, help="Transcript JSON")
+    tr_store.add_argument("--data-file", dest="payload", type=parse_json_file, help="Read payload from JSON file")
 
     tr_del = tr_sub.add_parser("delete", help="Delete transcript")
     tr_del.add_argument("call_id", help="Call UUID")
@@ -1826,12 +1850,12 @@ def build_parser():
     fld_ls.add_argument("--entity-type", default=None, help="Filter by entity type (default: all)")
 
     fld_cr = fld_sub.add_parser("create", help="Create custom field")
-    fld_cr.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    fld_cr.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                         help="Field definition as JSON")
 
     fld_upd = fld_sub.add_parser("update", help="Update custom field")
     fld_upd.add_argument("id", help="Field UUID")
-    fld_upd.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    fld_upd.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                          help="Fields to update as JSON")
 
     fld_del = fld_sub.add_parser("delete", help="Delete custom field")
@@ -1847,19 +1871,19 @@ def build_parser():
     fg_sub.add_parser("list", help="List field groups with fields")
 
     fg_cr = fg_sub.add_parser("create", help="Create field group")
-    fg_cr.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    fg_cr.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                        help="Group definition as JSON")
 
     fg_upd = fg_sub.add_parser("update", help="Update field group")
     fg_upd.add_argument("id", help="Group UUID")
-    fg_upd.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    fg_upd.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                         help="Fields to update as JSON")
 
     fg_del = fg_sub.add_parser("delete", help="Delete field group")
     fg_del.add_argument("id", help="Group UUID")
 
     fg_reorder = fg_sub.add_parser("reorder", help="Reorder groups")
-    fg_reorder.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    fg_reorder.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                             help='Order as JSON: {"groups": [{"id": "...", "sort_order": 0}]}')
 
     fg_af = fg_sub.add_parser("add-field", help="Add field to group")
@@ -1872,13 +1896,13 @@ def build_parser():
 
     fg_rof = fg_sub.add_parser("reorder-fields", help="Reorder fields within group")
     fg_rof.add_argument("id", help="Group UUID")
-    fg_rof.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    fg_rof.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                         help='Order as JSON: {"fields": [{"id": "...", "sort_order": 0}]}')
 
     fg_uf = fg_sub.add_parser("update-field", help="Update field display settings in group")
     fg_uf.add_argument("id", help="Group UUID")
     fg_uf.add_argument("field_id", help="Custom field UUID")
-    fg_uf.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    fg_uf.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                        help="Display settings as JSON")
 
     # --- schedules ---
@@ -1891,12 +1915,12 @@ def build_parser():
     sch_get.add_argument("id", help="Schedule UUID")
 
     sch_cr = sch_sub.add_parser("create", help="Create schedule")
-    sch_cr.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    sch_cr.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                         help="Schedule definition as JSON")
 
     sch_upd = sch_sub.add_parser("update", help="Update schedule (syncs rules)")
     sch_upd.add_argument("id", help="Schedule UUID")
-    sch_upd.add_argument("--json", dest="json_data", type=parse_json_arg, required=True,
+    sch_upd.add_argument("--data", dest="payload", type=parse_json_arg, required=True,
                          help="Fields to update as JSON")
 
     sch_del = sch_sub.add_parser("delete", help="Delete schedule")
@@ -1930,7 +1954,7 @@ def build_parser():
     aut_upd.add_argument("--description", help="New description")
     aut_upd.add_argument("--is-active", type=parse_bool, default=None, help="Active status")
     aut_upd.add_argument("--settings", dest="settings_json", type=parse_json_arg, help="Settings as JSON")
-    aut_upd.add_argument("--json", dest="json_data", type=parse_json_arg, help="Full update payload as JSON")
+    aut_upd.add_argument("--data", dest="payload", type=parse_json_arg, help="Full update payload as JSON")
 
     aut_del = aut_sub.add_parser("delete", help="Delete automation")
     aut_del.add_argument("id", help="Automation UUID")

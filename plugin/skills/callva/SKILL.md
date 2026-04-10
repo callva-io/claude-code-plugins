@@ -50,7 +50,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py <resource> <action> --help
 
 - Use `--content-file` / `--file` flags for large content (prompts, scripts) — never inline
 - Use `-f key=value` for filtering on list/stats commands
-- Use `--json '{...}'` for complex create/update payloads
+- Use `--data '{...}'` (or `--data-file <path>`) for complex create/update payloads. Note: `--data` carries the request payload and is a subcommand flag (goes after the resource name); `--json` is a separate top-level output-format flag that goes before the resource name.
 - `schedules update` is a full PUT — send complete payload including all rules
 - `stats aggregate` uses `-f created_at_gte=<date>` for dates (NOT `--from`/`--to` which are `stats trends` only)
 

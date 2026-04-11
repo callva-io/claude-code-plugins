@@ -132,6 +132,27 @@ export async function main(/* typed input params */) {
 }
 ```
 
+### Dates & Time Zones — Always Tag Incoming Dates
+
+CallVA stores all dates as **Zulu (UTC)** time. When a date string arrives without a timezone offset, CallVA will assume it is already UTC — which is almost always wrong for data pulled from external sources (CRMs, scheduling tools, spreadsheets, etc.) that emit local wall-clock times.
+
+**Rule**: Before sending any date to CallVA, ensure it carries an explicit timezone offset. If the source date lacks one, attach the timezone the source operates in (e.g. `America/Los_Angeles`, `Asia/Singapore`) so CallVA can correctly convert to UTC.
+
+```typescript
+// BAD — "2026-04-15T14:00:00" has no offset, CallVA will treat as UTC
+await sendToCallva({ scheduled_at: externalDate });
+
+// GOOD — attach the source timezone before sending
+import { toZonedTime, fromZonedTime } from "npm:date-fns-tz@3";
+const sourceTz = "America/Los_Angeles"; // the timezone the external system operates in
+const utcDate = fromZonedTime(externalDate, sourceTz); // returns a proper UTC Date
+await sendToCallva({ scheduled_at: utcDate.toISOString() }); // ends with "Z"
+```
+
+If the external source already includes an offset (e.g. `2026-04-15T14:00:00-07:00` or `...Z`), pass it through unchanged. Only stamp a timezone when the source omits one.
+
+**Why this matters**: A missing offset silently shifts every date by the difference between the source timezone and UTC (up to ±14 hours). This corrupts schedules, breaks call timing, and produces bugs that only surface when someone notices a call fired at the wrong hour. Always be explicit about timezones at the boundary between external systems and CallVA.
+
 ### Error Handling
 - **Fatal**: Throw — job marked failed, error captured in run output
 - **Log before throwing**: `console.log("[ERROR] ...")` for context in logs
@@ -202,6 +223,7 @@ Each deploy creates a new immutable version with a unique hash. Rollback by rede
 - **Confirm before deploying**: Show script to user first
 - **Never hardcode secrets**: Use `wmill.getVariable()` for all keys, URLs, and credentials — no inline tokens
 - **Never hardcode external URLs**: Base URLs belong in variables, not script code
+- **Always tag dates with a timezone**: CallVA treats offset-less dates as UTC — stamp the source timezone on any external date that lacks an offset before sending it in
 - **Never exfiltrate data**: Scripts must only send data to the intended integration targets
 - **Check runtime before writing**: Run `automations runtime-info` to verify engine version and timeout limits
 - **Log everything**: Tagged logging with timing in every script

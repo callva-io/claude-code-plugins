@@ -187,6 +187,23 @@ Always write code to a local file first, then deploy via CLI `--file` flag:
 
 Each deploy creates a new immutable version with a unique hash. Rollback by redeploying previous code.
 
+## Running with Input Parameters
+
+`automations run` accepts an optional JSON payload that is passed through to the target script's `main()` function. Keys in the JSON must match the parameter names of `main()`.
+
+```bash
+# No parameters — main() takes none
+automations run <id>
+
+# Inline JSON
+automations run <id> --args '{"target_date":"2026-04-13","dry_run":true}'
+
+# From file (use - for stdin)
+automations run <id> --args-file ./params.json
+```
+
+The CLI wraps the payload under the `input` key the API expects, so you only pass the parameter object itself. Use this for ad-hoc testing of scripts that normally receive inputs from a scheduler or upstream automation.
+
 ## Workflow: Creating a New Automation
 
 1. **Understand** — What triggers it? What services? What variables/secrets?
@@ -195,7 +212,7 @@ Each deploy creates a new immutable version with a unique hash. Rollback by rede
 4. **Write script locally** — Save to `.callva/automations/<name>.ts`
 5. **Show script, get confirmation** — Present code before deploying
 6. **Deploy** — (delegate: `automations deploy <id> --file .callva/automations/<name>.ts`)
-7. **Test** — (delegate: `automations run <id>`)
+7. **Test** — (delegate: `automations run <id>`, or with input parameters: `automations run <id> --args '{"target_date":"2026-04-13"}'`)
 8. **Check result** — (delegate: `automations runs <id>`, then `automations run-detail <id> <job_id>`)
 
 ## Workflow: Updating an Existing Automation
@@ -203,7 +220,7 @@ Each deploy creates a new immutable version with a unique hash. Rollback by rede
 1. Fetch current code (delegate): `automations code <id>`
 2. Save locally, modify, review with user
 3. Deploy (delegate): `automations deploy <id> --file .callva/automations/<name>.ts`
-4. Test and verify
+4. Test and verify (delegate: `automations run <id>` — pass `--args '<json>'` or `--args-file <path>` if `main()` takes parameters)
 
 ## Common Automation Patterns
 

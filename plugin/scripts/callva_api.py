@@ -1328,13 +1328,30 @@ def automations_deploy(args):
 
 
 def automations_run(args):
-    """Trigger execution of an automation."""
-    result = api("POST", f"/external/automations/{args.id}/run")
+    """Trigger execution of an automation, optionally with input parameters.
+
+    Input parameters are passed through to the target script's main() function.
+    Keys in the JSON payload must match the parameter names of the automation's
+    main(). The CLI is agnostic about shape — any automation, any parameters.
+
+    The CallVA run endpoint expects the payload under a top-level "input" key
+    (see AutomationController::run). The CLI wraps that automatically so users
+    pass just the parameter object:
+
+        automations run <id>
+        automations run <id> --args '{"target_date":"2026-04-13"}'
+        automations run <id> --args-file ./params.json
+    """
+    run_args = getattr(args, "run_args", None)
+    body = {"input": run_args} if run_args is not None else None
+    result = api("POST", f"/external/automations/{args.id}/run", data=body)
 
     def fmt(r):
         d = r.get("data", r)
         out(f"Triggered: {args.id}")
         out(f"Job ID:    {d.get('job_id', '-')}")
+        if run_args is not None:
+            out(f"Input:     {json.dumps(run_args)}")
 
     out_result(result, fmt)
 
@@ -1970,6 +1987,10 @@ def build_parser():
 
     aut_run = aut_sub.add_parser("run", help="Trigger execution")
     aut_run.add_argument("id", help="Automation UUID")
+    aut_run.add_argument("--args", dest="run_args", type=parse_json_arg,
+                         help="Input parameters as JSON. Keys must match main() parameter names.")
+    aut_run.add_argument("--args-file", dest="run_args", type=parse_json_file,
+                         help="Read input parameters from a JSON file (- for stdin)")
 
     aut_runs = aut_sub.add_parser("runs", help="List completed runs")
     aut_runs.add_argument("id", help="Automation UUID")

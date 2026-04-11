@@ -1203,7 +1203,7 @@ def automations_list(args):
     def slim(r):
         return _apply_slim(r, lambda a: _pick(a, [
             "id", "name", "description", "is_active", "windmill_path",
-            "windmill_script_hash", "created_at", "updated_at"]))
+            "windmill_script_hash", "timeout_seconds", "created_at", "updated_at"]))
 
     out_result(result, fmt, slim=slim)
 
@@ -1220,6 +1220,7 @@ def automations_get(args):
         out(f"Active:      {a.get('is_active', '-')}")
         out(f"Path:        {a.get('windmill_path', '-')}")
         out(f"Hash:        {a.get('windmill_script_hash', '-')}")
+        out(f"Timeout:     {a.get('timeout_seconds', '-')}")
         out(f"Created:     {fmt_dt(a.get('created_at'))}")
         out(f"Updated:     {fmt_dt(a.get('updated_at'))}")
         settings = a.get("settings")
@@ -1287,11 +1288,10 @@ def automations_code(args):
 
     def fmt(r):
         d = r.get("data", r)
-        lang = d.get("language", "unknown")
         code = d.get("code", "")
-        hash_ = d.get("hash", "-")
-        out(f"Language: {lang}")
-        out(f"Hash:     {hash_}")
+        out(f"Language: {d.get('language', 'unknown')}")
+        out(f"Hash:     {d.get('hash', '-')}")
+        out(f"Timeout:  {d.get('timeout_seconds', '-')}")
         out(f"\n--- Code ({len(code)} chars) ---")
         out(code)
 

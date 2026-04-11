@@ -1185,15 +1185,6 @@ def automations_list(args):
 
     result = api("GET", "/external/automations", query=query)
 
-    # /external/automations returns a double-wrapped response: {"data": {"data": [...]}}
-    # unlike every other list endpoint. Unwrap it so fmt + slim see the standard shape.
-    outer_data = result.get("data")
-    if isinstance(outer_data, dict) and isinstance(outer_data.get("data"), list):
-        result["data"] = outer_data["data"]
-        for k, v in outer_data.items():
-            if k != "data" and k not in result:
-                result[k] = v
-
     def fmt(r):
         items = r.get("data", [])
         if not items:
@@ -1357,21 +1348,22 @@ def automations_run(args):
 
 
 def automations_runs(args):
-    """List completed runs for an automation."""
+    """List completed runs for an automation.
+
+    The response follows the canonical paginated list shape: `data` is the
+    array of runs; `pagination` is a top-level sibling. Windmill does not
+    expose a total count for its completed-jobs endpoint, so
+    `pagination.total` and `pagination.last_page` will be null — callers
+    should use next/prev navigation, not "page X of Y".
+    """
     query = {}
     if getattr(args, "per_page", None):
         query["per_page"] = str(args.per_page)
 
     result = api("GET", f"/external/automations/{args.id}/runs", query=query)
 
-    def _get_runs(r):
-        data = r.get("data", {})
-        if isinstance(data, dict):
-            return data.get("runs", [])
-        return data if isinstance(data, list) else []
-
     def fmt(r):
-        runs = _get_runs(r)
+        runs = r.get("data") or []
         if not runs:
             out("No runs found.")
             return
@@ -1388,13 +1380,8 @@ def automations_runs(args):
             )
 
     def slim(r):
-        runs = _get_runs(r)
-        filtered = dict(r)
-        filtered["data"] = [
-            _pick(run, ["id", "success", "duration_ms", "job_kind", "created_at"])
-            for run in runs
-        ]
-        return filtered
+        return _apply_slim(r, lambda run: _pick(run, [
+            "id", "success", "duration_ms", "job_kind", "created_at"]))
 
     out_result(result, fmt, slim=slim)
 

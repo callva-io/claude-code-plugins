@@ -93,7 +93,9 @@ Variable paths: `f/proj_{last12chars_of_project_uuid}/{VARIABLE_NAME}`. Discover
 Every project needs at minimum: `CALLVA_API_KEY` (secret) and `CALLVA_API_URL` (not secret).
 
 ### Logging — Verbose by Default
-Every script MUST include tagged logging with timing. This is the primary debugging mechanism.
+Every script MUST include tagged logging with timing. This is the primary debugging mechanism. Pick one of two conventions based on the script's shape:
+
+**Short single-purpose scripts** (webhook handlers, single-record mutations) — per-step elapsed suffix:
 
 ```typescript
 function elapsed(start: number): string {
@@ -103,61 +105,107 @@ const t0 = Date.now();
 console.log("=== Script Name started ===");
 console.log(`[INIT] Variables loaded (${elapsed(t0)})`);
 console.log(`[FETCH] Response: ${resp.status} (${elapsed(tFetch)})`);
-console.log(`[ERROR] Failed: ${err.message}`);
 console.log(`=== Script Name finished in ${elapsed(t0)} ===`);
 ```
 
-**Standard tags**: `[INIT]`, `[FETCH]`, `[LOCK]`, `[DISPATCH]`, `[API]`, `[UPDATE]`, `[ERROR]`
+**Multi-phase pipelines** (3+ distinct stages) — seconds-from-start prefix on every line, so you can see at a glance which stage spent the time:
+
+```typescript
+let _t0 = 0;
+function log(msg: string) {
+  const s = ((Date.now() - _t0) / 1000).toFixed(1);
+  console.log(`[${s}s] ${msg}`);
+}
+// ...
+_t0 = Date.now();
+log("[INIT] Variables loaded");
+log("[FETCH] Received 150 records");
+```
+
+**Standard tags**: `[INIT]`, `[FETCH]`, `[AUTH]`, `[FORMAT]`, `[DEDUP]`, `[CREATE]`, `[UPDATE]`, `[DISPATCH]`, `[ERROR]`, `[WARN]`, `[RETRY]`, `[FATAL]`, `[DONE]`. Pick per-phase tags over severity tags — `[FETCH]` is more greppable than `[INFO]`.
+
+**Full pattern**: For multi-phase pipelines with phase header comment blocks, phase tag conventions, and structured per-phase return values, read [docs/multi-phase-pipelines.md](docs/multi-phase-pipelines.md).
 
 ### Script Structure Template
 ```typescript
 import * as wmill from "npm:windmill-client@1";
 
-function elapsed(start: number): string {
-  return `${Date.now() - start}ms`;
+let _t0 = 0;
+function log(msg: string) {
+  const s = ((Date.now() - _t0) / 1000).toFixed(1);
+  console.log(`[${s}s] ${msg}`);
 }
 
-export async function main(/* typed input params */) {
-  const t0 = Date.now();
-  console.log("=== Script Name started ===");
+// Parameters should have defaults so cron can invoke main() with no arguments.
+// Parameters are overrides for ad-hoc runs, not required inputs.
+export async function main(
+  target_date: string = "",
+  dry_run: boolean = false,
+) {
+  _t0 = Date.now();
+  log("=== Script Name started ===");
 
   const apiKey = await wmill.getVariable("f/proj_XXXXXXXXXXXX/CALLVA_API_KEY");
   const baseUrl = await wmill.getVariable("f/proj_XXXXXXXXXXXX/CALLVA_API_URL");
-  console.log(`[INIT] Variables loaded (${elapsed(t0)})`);
+  log("[INIT] Variables loaded");
 
-  // Main logic with logging at each step...
+  // Main logic in phases, using pure helpers for transforms and
+  // effectful wrappers for I/O. See Modularity section below.
 
-  console.log(`=== Script Name finished in ${elapsed(t0)} ===`);
-  return { status: "success" };
+  log("=== Script Name finished ===");
+  return {
+    status: "success",
+    // Structured counts and drill-down lists for debugging.
+    // See docs/batch-processing.md for the full return shape.
+  };
 }
 ```
 
-### Dates & Time Zones — Always Tag Incoming Dates
+### Modularity — Pure Transforms vs Effectful Wrappers
 
-CallVA stores all dates as **Zulu (UTC)** time. When a date string arrives without a timezone offset, CallVA will assume it is already UTC — which is almost always wrong for data pulled from external sources (CRMs, scheduling tools, spreadsheets, etc.) that emit local wall-clock times.
+Every automation script benefits from a clean separation between functions that DO things (I/O, writes, side effects) and functions that COMPUTE things (data transformation, filtering, formatting). Keep them in separate helpers at module scope:
 
-**Rule**: Before sending any date to CallVA, ensure it carries an explicit timezone offset. If the source date lacks one, attach the timezone the source operates in (e.g. `America/Los_Angeles`, `Asia/Singapore`) so CallVA can correctly convert to UTC.
+- **Effectful wrappers** — each external API call gets its own named function: `getAuthToken`, `fetchRecords`, `createCallvaCall`, `sendSms`. Never inline `fetch()` in `main()`.
+- **Pure transforms** — each data transformation gets its own named function that takes input and returns output with no side effects: `formatRecord`, `parseTime`, `addDays`, `localToUtcIso`. No network calls, no `console.log`, no mutation of external state.
+- **Context objects** — when a pure function needs multiple shared values from `main()`, pass them as a typed context object (`FormatContext`) instead of lengthening the parameter list. Keeps signatures short and makes the dependency explicit.
 
-```typescript
-// BAD — "2026-04-15T14:00:00" has no offset, CallVA will treat as UTC
-await sendToCallva({ scheduled_at: externalDate });
+`main()` orchestrates: it calls effectful wrappers to get data, runs data through pure transforms, collects results, and calls more wrappers to persist them. Everything hard-to-test lives in wrappers; everything interesting lives in pure functions.
 
-// GOOD — attach the source timezone before sending
-import { toZonedTime, fromZonedTime } from "npm:date-fns-tz@3";
-const sourceTz = "America/Los_Angeles"; // the timezone the external system operates in
-const utcDate = fromZonedTime(externalDate, sourceTz); // returns a proper UTC Date
-await sendToCallva({ scheduled_at: utcDate.toISOString() }); // ends with "Z"
-```
+### Parameter Discipline
 
-If the external source already includes an offset (e.g. `2026-04-15T14:00:00-07:00` or `...Z`), pass it through unchanged. Only stamp a timezone when the source omits one.
+All `main()` parameters should have sensible defaults so the automation can be triggered by cron with no arguments. Parameters are **overrides** for ad-hoc runs, not required inputs. A scheduled automation that refuses to run without arguments is a design bug — move those values to variables, or derive them (e.g. "target date" defaults to tomorrow in the local timezone).
 
-**Why this matters**: A missing offset silently shifts every date by the difference between the source timezone and UTC (up to ±14 hours). This corrupts schedules, breaks call timing, and produces bugs that only surface when someone notices a call fired at the wrong hour. Always be explicit about timezones at the boundary between external systems and CallVA.
+Common patterns:
+
+- `target_date: string = ""` — empty string means "derive from today"; explicit value overrides for backfills and catch-up runs
+- `dry_run: boolean = false` — default false so cron runs are real; operators opt in to preview mode
+- `is_holiday: boolean = false` — default false; set true when an operator knows the current run has extra context the code can't infer
+
+When you find yourself wanting a required parameter, stop and ask whether the value can be derived, loaded from a variable, or defaulted sensibly.
+
+### Return Value Design
+
+Every script should return an object (not a bare string or number) with at minimum a `status` field and enough structure to debug a failed run without re-deploying. Avoid:
+
+- `{ status: "success" }` alone — useless for debugging
+- String-formatted summaries — can't query, chart, or alert on
+- Single bare totals — can't distinguish "nothing to do" from "everything skipped"
+
+**Full pattern**: For the structured return shape with outcome-category counts, drill-down lists, reconciliation discipline, and the three-status taxonomy (`success` / `completed_with_errors` / `failed` / `dry_run`), read [docs/batch-processing.md](docs/batch-processing.md) for batch scripts and [docs/resilience-and-retries.md](docs/resilience-and-retries.md) for status taxonomy.
+
+### Dates & Time Zones — Tag Offsets at the Producer Boundary
+
+CallVA stores all dates as **Zulu (UTC)** time. If you send a date string with no timezone offset, CallVA assumes it is already UTC and stores the literal value — silently shifting every date by the source timezone's offset. Before sending any date to CallVA, ensure it carries an explicit offset. If the external source doesn't provide one, stamp the source timezone using `fromZonedTime()` from `npm:date-fns-tz@3`.
+
+**Full pattern**: If the task involves any timezone conversion — producer-boundary discipline, single-source-of-truth `TIMEZONE` constant, DST correctness, hoisting conversion out of hot loops, or the anti-patterns that silently break dates — read [docs/timezone-handling.md](docs/timezone-handling.md) before writing the script. It covers the complete pattern with code examples and the specific mistakes to avoid.
 
 ### Error Handling
-- **Fatal**: Throw — job marked failed, error captured in run output
-- **Log before throwing**: `console.log("[ERROR] ...")` for context in logs
-- **Recoverable**: Log and continue, include failures in return value
-- **Call status integrity**: Never leave calls stuck in transient states (`starting`) — always reset to `scheduled` or `error` on failure
+- **Fatal errors** — return early with `status: "failed"` and include the error in the run output
+- **Log before failing**: `log("[ERROR] ...")` or `log("[FATAL] ...")` for context
+- **Recoverable errors** — log and continue, accumulate failures in an errors array, surface them in the return value
+- **Call status integrity**: never leave calls stuck in transient states (`starting`, `in_progress`) — always reset to `scheduled` or `error` on failure
+
+**Full pattern**: For the complete `withRetry` helper with `Result<T>` discriminated unions, linear backoff, recoverable-vs-fatal taxonomy, the `RunError` shape, retry budgets, and `AbortSignal.timeout()` usage on external fetches, read [docs/resilience-and-retries.md](docs/resilience-and-retries.md). Every script that calls an external API should follow this pattern.
 
 ### Sub-job Dispatch (Advanced)
 When a script triggers another automation (e.g. runner dispatching call processors):
@@ -204,9 +252,11 @@ automations run <id> --args-file ./params.json
 
 The CLI wraps the payload under the `input` key the API expects, so you only pass the parameter object itself. Use this for ad-hoc testing of scripts that normally receive inputs from a scheduler or upstream automation.
 
+**Full pattern**: For the convention of making `dry_run` a first-class parameter, returning a sample of what *would* be written, and treating dry-runs as non-negotiable before live deploys of mutating automations, read [docs/dry-run-pattern.md](docs/dry-run-pattern.md).
+
 ## Workflow: Creating a New Automation
 
-1. **Understand** — What triggers it? What services? What variables/secrets?
+1. **Understand** — What triggers it? What services? What variables/secrets? **If the automation creates records from an external source system, read [docs/idempotency.md](docs/idempotency.md) before writing the dedup logic** — every such pipeline needs a stable external ID and a dedup check, or re-runs silently duplicate data.
 2. **Create variables** — User provides secret values (delegate: `variables create ...`)
 3. **Create automation** — (delegate: `automations create --name "..." --description "..."`)
 4. **Write script locally** — Save to `.callva/automations/<name>.ts`

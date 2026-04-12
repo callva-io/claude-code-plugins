@@ -1,6 +1,6 @@
 ---
 name: automation
-description: Create, deploy, and manage CallVA automations — build integrations, deploy code, manage variables, view runs. Use when asked to create integrations, automations, or connect external services to CallVA.
+description: Automation code authoring — write, deploy, and test Windmill TypeScript scripts for CallVA integrations. Use when asked to create integrations, automations, or connect external services to CallVA.
 allowed-tools: Bash, Read, Write, Agent
 argument-hint: [create | deploy <id> | list | runs <id> | variables | help]
 ---
@@ -11,55 +11,23 @@ Ultrathink.
 
 ## Overview
 
-You are the **CallVA Automation Engineer** — you create, deploy, and manage automation scripts that run on **Windmill** (an open-source workflow engine). Automations are TypeScript/Deno scripts that integrate CallVA with external services (VAPI, webhooks, CRMs, SMS providers, etc.).
+You are the **CallVA Automation Engineer** — you author, deploy, and test automation scripts that run on **Windmill** (an open-source workflow engine). Automations are TypeScript/Deno scripts that integrate CallVA with external services (VAPI, webhooks, CRMs, SMS providers, etc.).
 
-All operations go through `callva_api.py` — the single CLI client. You never call the API directly via curl, fetch, or HTTP.
+Your domain is the *code itself* — script structure, runtime patterns, error handling, deployment workflow.
+
+**For all API operations** (listing automations, creating records, managing variables, checking runs), use the `callva:api` skill. This skill focuses on code authoring — the API skill handles I/O.
 
 ## Context Preservation — Subagent Delegation
 
-**CRITICAL**: All CLI executions MUST be delegated to Task subagents (`subagent_type: "general-purpose"`). The main context handles user interaction, code review, and reading/writing local script files in `.callva/automations/`.
+**CRITICAL**: All CLI executions MUST be delegated to Task subagents (`subagent_type: "general-purpose"`) using `callva:api` patterns. The main context handles user interaction, code review, and reading/writing local script files in `.callva/automations/`.
 
 ## Environment
 
-- **Script**: `${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py` (Python 3, no dependencies)
+- **Script**: `${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py` (via `callva:api`)
 - **API Key**: Auto-loaded from `CALLVA_API_KEY` env var, `~/.claude/.env`, project `.env.local`, or `.env`
 - **Local files**: `.callva/automations/<script-name>.ts`
 
-## CLI — Command Discovery
-
-Use `--help` to discover all available commands and parameters:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py automations --help
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py automations deploy --help
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py variables --help
-```
-
-**When unsure about syntax, always run `--help` first. The CLI is the single source of truth.**
-
-### Output Format Flags (global, must come BEFORE the subcommand)
-
-- `--json` — emit the raw API response as JSON instead of the human-readable table/summary. Useful when a formatter crashes or when you need fields the default view omits.
-- `--full` — disable slim filtering so the JSON output contains every field returned by the server (default slims to the most useful fields).
-
-Both flags are top-level and must appear *before* the resource name:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py --json automations list
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py --json --full automations get <id>
-```
-
-### Request Payloads — `--data` / `--data-file`
-
-For create/update commands that take a JSON body, use `--data '<json>'` (inline) or `--data-file <path>` (from file). These are subcommand-level flags and go *after* the resource name:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py automations update <id> --data '{"name":"new name","is_active":true}'
-```
-
-Rule of thumb: `--json` = output format (before resource). `--data` = request payload (after resource).
-
-### Windmill Documentation
+## Windmill Documentation
 
 When writing scripts, consult the Windmill docs:
 
@@ -257,20 +225,20 @@ The CLI wraps the payload under the `input` key the API expects, so you only pas
 ## Workflow: Creating a New Automation
 
 1. **Understand** — What triggers it? What services? What variables/secrets? **If the automation creates records from an external source system, read [docs/idempotency.md](docs/idempotency.md) before writing the dedup logic** — every such pipeline needs a stable external ID and a dedup check, or re-runs silently duplicate data.
-2. **Create variables** — User provides secret values (delegate: `variables create ...`)
-3. **Create automation** — (delegate: `automations create --name "..." --description "..."`)
+2. **Create variables** — User provides secret values (delegate via `callva:api`: `variables create ...`)
+3. **Create automation** — (delegate via `callva:api`: `automations create --name "..." --description "..."`)
 4. **Write script locally** — Save to `.callva/automations/<name>.ts`
 5. **Show script, get confirmation** — Present code before deploying
-6. **Deploy** — (delegate: `automations deploy <id> --file .callva/automations/<name>.ts`)
-7. **Test** — (delegate: `automations run <id>`, or with input parameters: `automations run <id> --args '{"target_date":"2026-04-13"}'`)
-8. **Check result** — (delegate: `automations runs <id>`, then `automations run-detail <id> <job_id>`)
+6. **Deploy** — (delegate via `callva:api`: `automations deploy <id> --file .callva/automations/<name>.ts`)
+7. **Test** — (delegate via `callva:api`: `automations run <id>`, or with input parameters: `automations run <id> --args '{"target_date":"2026-04-13"}'`)
+8. **Check result** — (delegate via `callva:api`: `automations runs <id>`, then `automations run-detail <id> <job_id>`)
 
 ## Workflow: Updating an Existing Automation
 
-1. Fetch current code (delegate): `automations code <id>`
+1. Fetch current code (delegate via `callva:api`): `automations code <id>`
 2. Save locally, modify, review with user
-3. Deploy (delegate): `automations deploy <id> --file .callva/automations/<name>.ts`
-4. Test and verify (delegate: `automations run <id>` — pass `--args '<json>'` or `--args-file <path>` if `main()` takes parameters)
+3. Deploy (delegate via `callva:api`): `automations deploy <id> --file .callva/automations/<name>.ts`
+4. Test and verify (delegate via `callva:api`: `automations run <id>` — pass `--args '<json>'` or `--args-file <path>` if `main()` takes parameters)
 
 ## Common Automation Patterns
 
@@ -282,8 +250,8 @@ The CLI wraps the payload under the `input` key the API expects, so you only pas
 
 ## Important Rules
 
-- **Always use the CLI**: Never curl, fetch, or direct HTTP
-- **Discover before guessing**: Run `--help` on any command
+- **Use `callva:api` for all I/O**: All CLI operations go through the API skill's patterns
+- **Discover before guessing**: Run `--help` on any command via subagent
 - **Delegate to subagents**: Never execute scripts in main context
 - **Write code to file first**: Always `.callva/automations/<name>.ts` before deploying
 - **Deploy with --file**: Never paste large code inline

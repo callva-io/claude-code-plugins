@@ -1777,7 +1777,7 @@ def build_parser():
     cl_ls.add_argument("--per-page", type=int, help="Results per page")
     cl_ls.add_argument("--page", type=int, help="Page number")
     cl_ls.add_argument("--sort", default="-created_at", help="Sort field (use = for desc, e.g. --sort=-created_at)")
-    cl_ls.add_argument("--filter", "-f", action="append", help="Filter as key=value (repeatable)")
+    cl_ls.add_argument("--filter", "-f", action="append", help="Filter as key=value, e.g. -f status=complete -f result=confirmed (repeatable)")
 
     cl_get = cl_sub.add_parser("get", help="Get call details (always JSON — dynamic fields)")
     cl_get.add_argument("id", help="Call UUID")
@@ -1831,7 +1831,7 @@ def build_parser():
     st_agg.add_argument("--field", help="Field to aggregate (required for sum/avg/min/max)")
     st_agg.add_argument("--group-by", help="Group results by field")
     st_agg.add_argument("--interval", choices=["day", "week", "month"], help="Time interval for grouping")
-    st_agg.add_argument("--filter", "-f", action="append", help="Filter as key=value (repeatable)")
+    st_agg.add_argument("--filter", "-f", action="append", help="Filter as key=value, e.g. -f status=complete -f created_at_gte=2026-01-01 (repeatable)")
 
     st_tr = st_sub.add_parser("trends", help="Daily call trend data")
     st_tr.add_argument("--from", dest="date_from", required=True, help="Start date (ISO format)")
@@ -2159,14 +2159,37 @@ DISPATCH = {
 }
 
 
+def _extract_global_flags():
+    """Pull --json and --full out of sys.argv so they work in any position.
+
+    argparse binds these to the root parser, so they normally must appear
+    before the subcommand.  AI consumers frequently place them after, e.g.
+    ``calls list --json``.  Pre-extracting makes them position-independent.
+    """
+    argv = sys.argv[1:]
+    raw_json = False
+    full_json = False
+    cleaned = []
+    for arg in argv:
+        if arg == "--json":
+            raw_json = True
+        elif arg == "--full":
+            full_json = True
+        else:
+            cleaned.append(arg)
+    return cleaned, raw_json, full_json
+
+
 def main():
     global RAW_JSON, FULL_JSON
 
-    parser = build_parser()
-    args = parser.parse_args()
+    cleaned_argv, flag_json, flag_full = _extract_global_flags()
 
-    RAW_JSON = getattr(args, "raw_json", False)
-    FULL_JSON = getattr(args, "full_json", False)
+    parser = build_parser()
+    args = parser.parse_args(cleaned_argv)
+
+    RAW_JSON = getattr(args, "raw_json", False) or flag_json
+    FULL_JSON = getattr(args, "full_json", False) or flag_full
 
     resource = args.resource
     handler = DISPATCH.get(resource)

@@ -13,7 +13,7 @@ CallVA stores every date as **Zulu (UTC)** time. On write, it parses the incomin
 
 ## Producer-boundary discipline
 
-The script that *writes* a date to CallVA is the only place that should perform local → UTC conversion. Downstream consumers (SMS sender, voice agent prompt builder, the runner, dashboards) read the UTC string from CallVA and render back to local time for display.
+The script that *writes* a date to CallVA is the only place that should perform local → UTC conversion. Downstream consumers read the UTC string from CallVA and render back to local time for display if needed.
 
 ```
 External source (local wall-clock)

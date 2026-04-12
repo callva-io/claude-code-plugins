@@ -1,6 +1,6 @@
 ---
 name: prompt
-description: Work with CallVA voice agent prompts — sync, edit, diff, push, optimize, version. Dedicated prompt engineering workflow built on the CallVA API. Use when asked to view, edit, improve, or manage voice agent prompts.
+description: Voice agent prompt engineering — write, optimize, version, and manage prompt content for CallVA agents. Use when asked to view, edit, improve, or manage voice agent prompts.
 argument-hint: [sync | edit <id> | push <id> | diff <id> | list | optimize <id> | status]
 ---
 
@@ -10,26 +10,22 @@ Ultrathink.
 
 ## Overview
 
-You are a **prompt engineer for voice agents**. You work with CallVA prompt assets — fetching them from the API, editing locally, diffing against remote, pushing changes back, and managing prompt versions.
+You are a **prompt engineer for voice agents**. You craft, optimize, and version prompt content for CallVA voice agents. Your domain is the *text itself* — structure, tone, instruction clarity, voice-specific patterns.
 
 This skill manages a **local working copy** of prompts in `.callva/prompts/` and provides a structured edit-diff-push workflow with versioning and agent linkage awareness.
 
-All CLI operations go through `callva_api.py`. Use `--help` to discover commands and parameters:
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py assets --help
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py agents --help
-```
+**For all API operations** (listing, fetching, creating, updating assets and agents), use the `callva:api` skill. This skill focuses on content — the API skill handles I/O.
 
 ## Context Preservation — Subagent Delegation
 
-**CRITICAL**: All script executions MUST be delegated to Task subagents (`subagent_type: "general-purpose"`).
+**CRITICAL**: All API calls MUST be delegated to Task subagents (`subagent_type: "general-purpose"`) using `callva:api` patterns.
 
 **Main context**: Reading/editing local prompt files, user interaction, prompt analysis.
 **Subagents**: All CLI executions (list, get, update, create, agents).
 
 ## Environment
 
-- **Script**: `${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py`
+- **Script**: `${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py` (via `callva:api`)
 - **Working directory**: `.callva/prompts/` at project root
 - **File naming**: `<kebab-name>-<last-12-uuid-chars>.md` (plain markdown, content only, no frontmatter)
 
@@ -120,4 +116,4 @@ Naming: `Prompt ET v.3`, `Appointment Reminder - concise`, `Intake Greeting EN`
 - **Content only**: `.md` files contain ONLY prompt content — no metadata
 - **Version over overwrite**: Suggest new version for significant changes
 - **Show linkage**: Always indicate which prompt is active on the agent
-- **Use the CLI**: Never curl or direct HTTP — use `callva_api.py` via subagents
+- **Use `callva:api` for I/O**: All CLI operations go through the API skill's patterns

@@ -84,9 +84,9 @@ The plugin activates automatically when Claude detects a CallVA-related request.
 
 ## Components
 
-- **CallVA Skill** (`plugin/skills/callva/SKILL.md`) - High-level helper that activates automatically. Delegates API calls to subagents to keep conversation context clean.
-- **Prompt Skill** (`plugin/skills/prompt/SKILL.md`) - Dedicated prompt engineering workflow with sync, edit, diff, push, versioning, and agent linkage.
-- **Automation Skill** (`plugin/skills/automation/SKILL.md`) - Create, deploy, and manage Windmill automation scripts with best-practice guidance.
+- **API Skill** (`plugin/skills/api/SKILL.md`) - Pure CRUD / I/O adapter for all CallVA resources. Delegates API calls to subagents to keep conversation context clean.
+- **Prompt Skill** (`plugin/skills/prompt/SKILL.md`) - Voice agent prompt content engineering — write, optimize, version, and manage prompt text. Uses the API skill for I/O.
+- **Automation Skill** (`plugin/skills/automation/SKILL.md`) - Automation code authoring — write, deploy, and test Windmill TypeScript scripts. Uses the API skill for I/O.
 - **Script** (`plugin/scripts/callva_api.py`) - Stateless Python CLI (stdlib only, no dependencies). All API interactions go through this script.
 
 ## License

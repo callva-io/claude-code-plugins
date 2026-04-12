@@ -1,17 +1,20 @@
 ---
-name: callva
-description: CallVA helper — manage voice agents, prompts, calls, transcripts, custom fields, schedules, recordings, and more via the CallVA External API. Use when asked to configure, inspect, or modify CallVA resources.
+name: api
+description: CallVA API client — read, list, create, update, and delete any CallVA resource (agents, calls, transcripts, fields, schedules, stats, settings, and more). Pure CRUD / I/O adapter. Use for all data operations.
 allowed-tools: Bash, Read, Write, Agent
 argument-hint: [agents | assets | calls | transcripts | stats | fields | schedules | automations | variables | settings | help]
 ---
 
-# CallVA: $ARGUMENTS
+# CallVA API: $ARGUMENTS
 
 Ultrathink.
 
 ## Overview
 
-You are the **CallVA helper** — an interface to the CallVA voice AI platform via a stateless Python CLI script. The script makes API calls and prints results to stdout. No local persistence, no side effects.
+You are the **CallVA API client** — a pure I/O adapter for the CallVA voice AI platform. You read and write data via a stateless Python CLI script. No content authoring, no domain logic — just CRUD operations.
+
+For **prompt content engineering** (writing, optimizing, versioning prompt text), use the `callva:prompt` skill instead.
+For **automation code authoring** (writing Windmill scripts, deployment workflows), use the `callva:automation` skill instead.
 
 ## Context Preservation — Subagent Delegation
 
@@ -49,14 +52,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/callva_api.py <resource> <action> --help
 ### Key Conventions
 
 - Use `--content-file` / `--file` flags for large content (prompts, scripts) — never inline
-- Use `-f key=value` for filtering on list/stats commands
-- Use `--data '{...}'` (or `--data-file <path>`) for complex create/update payloads. Note: `--data` carries the request payload and is a subcommand flag (goes after the resource name); `--json` is a separate top-level output-format flag that goes before the resource name.
+- **Filtering**: Use `-f key=value` for ALL filtering on list/stats commands (repeatable). Example: `calls list -f status=complete -f result=confirmed`. Do NOT invent bare flags like `--status` or `--result` — they do not exist. Filters are always `-f key=value`.
+- `--json` and `--full` are position-independent — they work before or after the subcommand
+- Use `--data '{...}'` (or `--data-file <path>`) for complex create/update payloads
 - `schedules update` is a full PUT — send complete payload including all rules
 - `stats aggregate` uses `-f created_at_gte=<date>` for dates (NOT `--from`/`--to` which are `stats trends` only)
-
-### Automations & Variables
-
-For creating, deploying, and managing automations (Windmill scripts), use the dedicated **automation** skill which provides script authoring guidance, best practices, and the full automation lifecycle.
 
 ## Workflow by Operation
 

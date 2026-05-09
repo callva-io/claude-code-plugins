@@ -10,6 +10,7 @@ Usage:
     callva_api.py agents        list | default | get <id> | update <id> | delete <id>
     callva_api.py assets        list | get <id> | create | update <id> | delete <id>
     callva_api.py calls         list | get <id> | create | update <id> | delete <id> | batch
+                                | webhook-logs <call_id> | automation-runs <call_id>
     callva_api.py transcripts   get <call_id> | store <call_id> | delete <call_id> | url <call_id>
     callva_api.py call          <destination> --agent-id <id>
     callva_api.py stats         aggregate | trends
@@ -17,7 +18,9 @@ Usage:
     callva_api.py fields        list | create | update <id> | delete <id> | impact <id>
     callva_api.py field-groups  list | create | update <id> | delete <id> | reorder | ...
     callva_api.py schedules     list | get <id> | create | update <id> | delete <id> | preview | executions
-    callva_api.py automations   list | get <id> | create | update <id> | delete <id> | code <id> | deploy <id> | run <id> | runs <id> | run-detail <id> <job> | runtime-info
+    callva_api.py automations   list | get <id> | create | update <id> | delete <id> | code <id> | deploy <id> | run <id>
+                                | runs <id> | all-runs | run-detail <id> <job> | runtime-info
+    callva_api.py webhook-logs  list | get <id> | filters
     callva_api.py variables     list | create | update <path> | delete <path>
     callva_api.py settings      list | get <key>
     callva_api.py projects      list | get <id>
@@ -1423,6 +1426,243 @@ def automations_runtime_info(_args):
     out_result(result, fmt)
 
 
+def _fmt_runs_table(runs):
+    """Shared formatter for project-wide automation run lists."""
+    if not runs:
+        out("No runs found.")
+        return
+    out("| Job ID | Automation | Status | Triggered | Duration | Started |")
+    out("|--------|------------|--------|-----------|----------|---------|")
+    for r in runs:
+        dur = r.get("duration_ms")
+        dur_str = f"{dur}ms" if dur is not None else "-"
+        out(
+            f"| `{r.get('id', '-')}` "
+            f"| {r.get('automation_name', '-')} "
+            f"| {r.get('status', '-')} "
+            f"| {r.get('triggered_by', '-')} "
+            f"| {dur_str} "
+            f"| {fmt_dt(r.get('started_at'))} |"
+        )
+
+
+def _fmt_pagination(pagination, fallback_total):
+    """Print the standard `Page X/Y (N total)` footer if a pagination block exists."""
+    if not pagination:
+        return
+    out(
+        f"\nPage {pagination.get('current_page', 1)}/{pagination.get('last_page', '?')} "
+        f"({pagination.get('total', fallback_total)} total)"
+    )
+
+
+def automations_all_runs(args):
+    """List runs across all automations in the project.
+
+    Simple scalar filters (automation, status, triggered_by, started_after,
+    started_before) go through `-f key=value`, matching the rest of the CLI.
+    JSONB containment filters use the dedicated `--args-filter` /
+    `--result-filter` flags because they take a JSON tree, not a scalar.
+    """
+    query = {}
+    if args.per_page:
+        query["per_page"] = str(args.per_page)
+    if args.page:
+        query["page"] = str(args.page)
+    if args.filter:
+        for filt in args.filter:
+            k, _, v = filt.partition("=")
+            if v:
+                query[k] = v
+    if args.args_filter:
+        query["args"] = args.args_filter
+    if args.result_filter:
+        query["result"] = args.result_filter
+    if args.include_args:
+        query["include_args"] = "true"
+
+    result = api("GET", "/external/automations/runs", query=query)
+
+    def fmt(r):
+        runs = r.get("data") or []
+        _fmt_runs_table(runs)
+        _fmt_pagination(r.get("pagination", {}), len(runs))
+
+    def slim(r):
+        return _apply_slim(r, lambda run: _pick(run, [
+            "id", "automation_id", "automation_name", "status",
+            "triggered_by", "duration_ms", "started_at", "args"]))
+
+    out_result(result, fmt, slim=slim)
+
+
+# ===================================================================
+# WEBHOOK LOGS
+# ===================================================================
+
+
+def _fmt_webhook_logs_table(logs, include_call=True):
+    """Shared row formatter for webhook log lists. Set include_call=False
+    on route-scoped variants where the call is implicit."""
+    if include_call:
+        out("| Log ID | Type | Event | Status | Resp | Time | Call | Received |")
+        out("|--------|------|-------|--------|------|------|------|----------|")
+    else:
+        out("| Log ID | Type | Event | Status | Resp | Time | Received |")
+        out("|--------|------|-------|--------|------|------|----------|")
+    for log in logs:
+        rt = log.get("response_time_ms")
+        rt_str = f"{rt}ms" if rt is not None else "-"
+        row = (
+            f"| `{log.get('id', '-')[:8]}` "
+            f"| {log.get('type', '-')} "
+            f"| {log.get('event_type', '-') or '-'} "
+            f"| {log.get('processing_status', '-')} "
+            f"| {log.get('response_status', '-') or '-'} "
+            f"| {rt_str} "
+        )
+        if include_call:
+            call_id = log.get("related_call_id") or "-"
+            call_short = call_id[:8] if call_id != "-" else "-"
+            row += f"| `{call_short}` "
+        row += f"| {fmt_dt(log.get('received_at'))} |"
+        out(row)
+
+
+def _slim_webhook_log(log, include_call=True):
+    keys = ["id", "type", "event_type", "processing_status", "response_status",
+            "response_time_ms", "agent_id", "received_at", "error_message"]
+    if include_call:
+        keys.insert(7, "related_call_id")
+    return _pick(log, keys)
+
+
+def webhook_logs_list(args):
+    """List webhook logs with filtering and pagination."""
+    query = {}
+    if args.per_page:
+        query["per_page"] = str(args.per_page)
+    if args.page:
+        query["page"] = str(args.page)
+    if args.sort:
+        query["sort"] = args.sort
+    if args.filter:
+        for filt in args.filter:
+            k, _, v = filt.partition("=")
+            if v:
+                query[k] = v
+
+    result = api("GET", "/external/webhook-logs", query=query)
+
+    def fmt(r):
+        logs = r.get("data") or []
+        if not logs:
+            out("No webhook logs found.")
+            return
+        _fmt_webhook_logs_table(logs, include_call=True)
+        _fmt_pagination(r.get("pagination", {}), len(logs))
+
+    def slim(r):
+        return _apply_slim(r, lambda log: _slim_webhook_log(log, include_call=True))
+
+    out_result(result, fmt, slim=slim)
+
+
+def webhook_logs_get(args):
+    """Get a single webhook log with full request/response payload."""
+    result = api("GET", f"/external/webhook-logs/{args.id}")
+    out_json(result.get("data", result))
+
+
+def webhook_logs_filters(_args):
+    """List available filter values (types, statuses, observed event types)."""
+    result = api("GET", "/external/webhook-logs/filters")
+
+    def fmt(r):
+        d = r.get("data", r)
+        out("Types:")
+        for t in d.get("types", []):
+            out(f"  {t.get('value')} — {t.get('label')}")
+        out("\nProcessing statuses:")
+        for s in d.get("processing_statuses", []):
+            out(f"  {s.get('value')} — {s.get('label')}")
+        out("\nObserved event types:")
+        for e in d.get("event_types", []):
+            out(f"  {e.get('value')} — {e.get('label')}")
+
+    out_result(result, fmt)
+
+
+def calls_webhook_logs(args):
+    """List webhook logs for a specific call (404 if call not found)."""
+    query = {}
+    if args.per_page:
+        query["per_page"] = str(args.per_page)
+    if args.page:
+        query["page"] = str(args.page)
+    if args.sort:
+        query["sort"] = args.sort
+    if args.filter:
+        for filt in args.filter:
+            k, _, v = filt.partition("=")
+            if v and k != "related_call_id":  # forced by route
+                query[k] = v
+
+    result = api("GET", f"/external/calls/{args.call_id}/webhook-logs", query=query)
+
+    def fmt(r):
+        logs = r.get("data") or []
+        if not logs:
+            out(f"No webhook logs for call {args.call_id}.")
+            return
+        _fmt_webhook_logs_table(logs, include_call=False)
+        _fmt_pagination(r.get("pagination", {}), len(logs))
+
+    def slim(r):
+        return _apply_slim(r, lambda log: _slim_webhook_log(log, include_call=False))
+
+    out_result(result, fmt, slim=slim)
+
+
+def calls_automation_runs(args):
+    """List automation runs for a specific call.
+
+    Server auto-injects the JSONB filter `{"call":{"id":"<uuid>"}}` and
+    defaults `include_args=true` so the full triggering payload is returned.
+    Pass `--no-include-args` to disable that default.
+    """
+    query = {}
+    if args.per_page:
+        query["per_page"] = str(args.per_page)
+    if args.page:
+        query["page"] = str(args.page)
+    if args.filter:
+        for filt in args.filter:
+            k, _, v = filt.partition("=")
+            if v:
+                query[k] = v
+    # Explicit override of the include_args=true default
+    if args.no_include_args:
+        query["include_args"] = "false"
+
+    result = api("GET", f"/external/calls/{args.call_id}/automation-runs", query=query)
+
+    def fmt(r):
+        runs = r.get("data") or []
+        if not runs:
+            out(f"No automation runs for call {args.call_id}.")
+            return
+        _fmt_runs_table(runs)
+        _fmt_pagination(r.get("pagination", {}), len(runs))
+
+    def slim(r):
+        return _apply_slim(r, lambda run: _pick(run, [
+            "id", "automation_id", "automation_name", "status",
+            "triggered_by", "duration_ms", "started_at", "args"]))
+
+    out_result(result, fmt, slim=slim)
+
+
 # ===================================================================
 # VARIABLES
 # ===================================================================
@@ -1796,6 +2036,38 @@ def build_parser():
     cl_batch.add_argument("ids", nargs="+", help="Call UUIDs")
     cl_batch.add_argument("--data", dest="payload", type=parse_json_arg, help="Update fields as JSON")
 
+    cl_wl = cl_sub.add_parser("webhook-logs", help="List webhook logs received for a specific call")
+    cl_wl.add_argument("call_id", help="Call UUID")
+    cl_wl.add_argument("--per-page", type=int, help="Results per page")
+    cl_wl.add_argument("--page", type=int, help="Page number")
+    cl_wl.add_argument("--sort", default="-received_at", help="Sort field, prefix with - for desc (default: -received_at)")
+    cl_wl.add_argument("--filter", "-f", action="append",
+                       help="Extra filter as key=value, e.g. -f event_type=call-ended (repeatable). related_call_id is forced from the route.")
+
+    cl_ar = cl_sub.add_parser(
+        "automation-runs",
+        help="List automation runs triggered for a specific call (include_args=true by default)",
+        description=(
+            "List automation runs triggered for a specific call. Server auto-injects\n"
+            "the JSONB filter `{\"call\":{\"id\":\"<uuid>\"}}` and defaults\n"
+            "include_args=true so the full triggering payload is returned.\n\n"
+            "Filters use -f key=value (repeatable). Supported keys:\n"
+            "  status        — success | failed | running | queued | canceled\n"
+            "  triggered_by  — webhook | schedule | api\n\n"
+            "Result bodies are NOT included — pick the runs you care about and fetch\n"
+            "each with `automations run-detail <automation-id> <job-id>` to see result\n"
+            "and logs."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    cl_ar.add_argument("call_id", help="Call UUID")
+    cl_ar.add_argument("--per-page", type=int, help="Results per page")
+    cl_ar.add_argument("--page", type=int, help="Page number")
+    cl_ar.add_argument("--filter", "-f", action="append",
+                       help="Filter as key=value, e.g. -f status=success -f triggered_by=webhook (repeatable)")
+    cl_ar.add_argument("--no-include-args", action="store_true",
+                       help="Disable the default include_args=true (smaller responses, no payload)")
+
     # --- transcripts ---
     tr = subs.add_parser("transcripts", help="Manage call transcripts")
     tr_sub = tr.add_subparsers(dest="action", required=True)
@@ -1979,15 +2251,98 @@ def build_parser():
     aut_run.add_argument("--args-file", dest="run_args", type=parse_json_file,
                          help="Read input parameters from a JSON file (- for stdin)")
 
-    aut_runs = aut_sub.add_parser("runs", help="List completed runs")
+    aut_runs = aut_sub.add_parser("runs", help="List completed runs for one automation")
     aut_runs.add_argument("id", help="Automation UUID")
     aut_runs.add_argument("--per-page", type=int, help="Results per page")
+
+    aut_arl = aut_sub.add_parser(
+        "all-runs",
+        help="List runs across all automations in the project, with scalar and JSONB filters",
+        description=(
+            "List runs across all automations in the project.\n\n"
+            "FILTERS — two kinds:\n"
+            "  -f key=value          scalar filters (repeatable). Supported keys:\n"
+            "                          automation, status, triggered_by,\n"
+            "                          started_after, started_before\n"
+            "                          status: success | failed | running | queued | canceled\n"
+            "                          triggered_by: webhook | schedule | api\n"
+            "  --args-filter <json>  JSONB containment on the triggering payload\n"
+            "  --result-filter <json> JSONB containment on the run result\n\n"
+            "ARGUMENT SHAPE — webhook-triggered runs from CallVA agent webhooks have the shape:\n"
+            "  {\n"
+            "    call:    {id, type, status, direction, tenant_id, project_id, started_at, ...},\n"
+            "    agent:   {id, name, custom_webhook_url, custom_webhook_enabled},\n"
+            "    caller:  {name, phone, identity},\n"
+            "    callee:  {phone},\n"
+            "    room:    {name, metadata},\n"
+            "    type:    'started' | 'ended' | ...,\n"
+            "    timestamp, transcript, messages, sip, environment\n"
+            "  }\n\n"
+            "Filter is JSONB containment, so partial subsets work and nesting is honored. "
+            "Examples:\n"
+            "  --args-filter '{\"call\":{\"id\":\"<uuid>\"}}'    # all runs for a call\n"
+            "  --args-filter '{\"agent\":{\"id\":\"<uuid>\"}}'   # all runs for an agent\n"
+            "  --args-filter '{\"type\":\"ended\"}'              # only call-ended payloads\n\n"
+            "DISCOVERY — to inspect the actual args shape for an automation, sample a few recent\n"
+            "runs with --include-args:\n"
+            "  callva_api.py automations all-runs -f automation=<uuid> --include-args --per-page 3 --json\n\n"
+            "For custom (non-webhook) automations triggered via API, the args shape is whatever "
+            "the caller passed to `automations run --args`.\n\n"
+            "RESULT BODIES — list responses do NOT include the run result. Windmill only exposes\n"
+            "result data on its per-job endpoint, and we deliberately don't N+1 it server-side.\n"
+            "Pattern: list runs, pick the 1-2 you care about, then fetch each with:\n"
+            "  callva_api.py automations run-detail <automation-id> <job-id>\n"
+            "Use --result-filter for filtering by result shape (server-side, no N+1)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    aut_arl.add_argument("--per-page", type=int, help="Results per page (default 30, max 1000)")
+    aut_arl.add_argument("--page", type=int, help="Page number")
+    aut_arl.add_argument("--filter", "-f", action="append",
+                         help="Filter as key=value, e.g. -f status=success -f triggered_by=webhook (repeatable). See description for keys.")
+    aut_arl.add_argument("--args-filter",
+                         help="JSONB containment filter on the triggering payload (URL-encoded server-side). See description for shape and examples.")
+    aut_arl.add_argument("--result-filter",
+                         help="JSONB containment filter on the run result (server-side, no N+1). Use to find runs with specific result shape.")
+    aut_arl.add_argument("--include-args", action="store_true",
+                         help="Include the full args payload in each returned run (free — Windmill returns it in the same query)")
 
     aut_rd = aut_sub.add_parser("run-detail", help="Get run detail (result, logs)")
     aut_rd.add_argument("id", help="Automation UUID")
     aut_rd.add_argument("job_id", help="Job UUID")
 
     aut_sub.add_parser("runtime-info", help="Get runtime environment info")
+
+    # --- webhook-logs ---
+    wl = subs.add_parser(
+        "webhook-logs",
+        help="Inspect inbound webhook activity (call lifecycle events, config requests)",
+        description=(
+            "Webhook logs capture every inbound webhook the platform received — call "
+            "lifecycle events (call-started, call-ended, ...), agent config requests, "
+            "and validation failures. Use these for debugging integrations and auditing "
+            "what payloads the platform actually saw."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    wl_sub = wl.add_subparsers(dest="action", required=True)
+
+    wl_ls = wl_sub.add_parser("list", help="List webhook logs with filters")
+    wl_ls.add_argument("--per-page", type=int, help="Results per page (default 30, max 100)")
+    wl_ls.add_argument("--page", type=int, help="Page number")
+    wl_ls.add_argument("--sort", default="-received_at",
+                       help="Sort field, prefix with - for desc (default: -received_at)")
+    wl_ls.add_argument("--filter", "-f", action="append",
+                       help=("Filter as key=value (repeatable). Supported keys: "
+                             "search, type (call|config_request), event_type, "
+                             "processing_status (success|validation_failed|processing_error|signature_invalid), "
+                             "agent_id, related_call_id, received_from, received_to, "
+                             "response_status, response_time_min, response_time_max"))
+
+    wl_get = wl_sub.add_parser("get", help="Get full payload for a webhook log (always JSON)")
+    wl_get.add_argument("id", help="Webhook log UUID")
+
+    wl_sub.add_parser("filters", help="List available filter values for the project")
 
     # --- variables ---
     var = subs.add_parser("variables", help="Manage project variables (secrets)")
@@ -2079,6 +2434,8 @@ DISPATCH = {
         "update": calls_update,
         "delete": calls_delete,
         "batch": calls_batch,
+        "webhook-logs": calls_webhook_logs,
+        "automation-runs": calls_automation_runs,
     },
     "transcripts": {
         "get": transcripts_get,
@@ -2122,8 +2479,14 @@ DISPATCH = {
         "deploy": automations_deploy,
         "run": automations_run,
         "runs": automations_runs,
+        "all-runs": automations_all_runs,
         "run-detail": automations_run_detail,
         "runtime-info": automations_runtime_info,
+    },
+    "webhook-logs": {
+        "list": webhook_logs_list,
+        "get": webhook_logs_get,
+        "filters": webhook_logs_filters,
     },
     "variables": {
         "list": variables_list,
